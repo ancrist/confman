@@ -1,0 +1,6 @@
+@Confman.Api_HostAddress = http://localhost:5178
+
+GET {{Confman.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

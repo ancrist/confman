@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Confman.Api/Confman.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Confman.Tests/Confman.Tests.csproj" />
+  </Folder>
+</Solution>
