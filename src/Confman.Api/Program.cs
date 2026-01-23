@@ -1,10 +1,15 @@
+using System.Diagnostics.CodeAnalysis;
 using Confman.Api.Auth;
 using Confman.Api.Cluster;
 using Confman.Api.Middleware;
 using Confman.Api.Storage;
 using DotNext.Net.Cluster.Consensus.Raft;
 using DotNext.Net.Cluster.Consensus.Raft.Http;
+using DotNext.Net.Cluster.Consensus.Raft.StateMachine;
+using Microsoft.AspNetCore.Connections;
 using Serilog;
+
+[assembly: Experimental("DOTNEXT001")]
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
@@ -13,6 +18,19 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+
+    // Get the URL this instance will listen on (for cluster identity)
+    // Only set publicEndPoint if not already configured (allows command-line override)
+    if (string.IsNullOrEmpty(builder.Configuration["publicEndPoint"]))
+    {
+        var urls = builder.Configuration["urls"] ?? builder.Configuration["ASPNETCORE_URLS"] ?? "http://localhost:5000";
+        builder.Configuration["publicEndPoint"] = urls.Split(';')[0];
+    }
+
+    // Use port-specific data directory to isolate cluster nodes
+    var publicEndPoint = builder.Configuration["publicEndPoint"]!;
+    var port = new Uri(publicEndPoint).Port;
+    builder.Configuration["Storage:DataPath"] = $"./data-{port}";
 
     // Configure Serilog
     builder.Host.UseSerilog((context, config) => config
@@ -28,6 +46,33 @@ try
     // Register cluster services
     builder.Services.AddSingleton<IClusterMemberLifetime, ClusterLifetime>();
     builder.Services.AddScoped<IRaftService, RaftService>();
+
+    // Configure WriteAheadLog options for the state machine
+    var dataPath = builder.Configuration["Storage:DataPath"] ?? "./data";
+    var walPath = Path.Combine(dataPath, "raft-log");
+    builder.Services.AddSingleton(new DotNext.Net.Cluster.Consensus.Raft.StateMachine.WriteAheadLog.Options
+    {
+        Location = walPath
+    });
+
+    // Register state machine for Raft log replication
+    builder.Services.UseStateMachine<ConfigStateMachine>();
+
+    // Configure cluster membership from configuration
+    var membersConfig = builder.Configuration.GetSection("members").Get<string[]>() ?? [];
+    if (membersConfig.Length > 0)
+    {
+        builder.Services.UseInMemoryConfigurationStorage(members =>
+        {
+            foreach (var member in membersConfig)
+            {
+                if (Uri.TryCreate(member, UriKind.Absolute, out var uri))
+                {
+                    members.Add(new UriEndPoint(uri));
+                }
+            }
+        });
+    }
 
     // Configure Raft cluster with HTTP transport
     builder.JoinCluster();
@@ -132,8 +177,11 @@ try
 
     app.MapControllers();
 
+    // Restore state machine from WAL before starting
+    await app.RestoreStateAsync<ConfigStateMachine>(CancellationToken.None);
+
     Log.Information("Starting Confman on {Urls}", string.Join(", ", app.Urls));
-    app.Run();
+    await app.RunAsync();
 }
 catch (Exception ex)
 {

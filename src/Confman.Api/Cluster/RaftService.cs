@@ -80,21 +80,24 @@ public class RaftService : IRaftService
             _logger.LogDebug("Replicating command: {CommandType}, size: {Size} bytes",
                 command.GetType().Name, bytes.Length);
 
-            // Create a log entry and replicate it
-            var entry = new BinaryLogEntry(bytes);
+            // Create a log entry with the current term
+            var entry = new BinaryLogEntry(bytes, _cluster.Term);
 
-            var result = await _cluster.ReplicateAsync(entry, ct);
+            // Add timeout to avoid hanging forever
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
 
-            if (result)
-            {
-                _logger.LogDebug("Command replicated successfully: {CommandType}", command.GetType().Name);
-            }
-            else
-            {
-                _logger.LogWarning("Command replication failed: {CommandType}", command.GetType().Name);
-            }
+            var result = await _cluster.ReplicateAsync(entry, timeoutCts.Token);
+
+            _logger.LogDebug("Command replicated: {CommandType}, result: {Result}",
+                command.GetType().Name, result);
 
             return result;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogError("Replication timed out after 10 seconds");
+            return false;
         }
         catch (Exception ex)
         {
@@ -109,14 +112,16 @@ public class RaftService : IRaftService
     private sealed class BinaryLogEntry : IRaftLogEntry
     {
         private readonly ReadOnlyMemory<byte> _data;
+        private readonly long _term;
 
-        public BinaryLogEntry(byte[] data)
+        public BinaryLogEntry(byte[] data, long term)
         {
             _data = data;
+            _term = term;
             Timestamp = DateTimeOffset.UtcNow;
         }
 
-        public long Term => 0; // Will be set by the cluster
+        public long Term => _term;
         public DateTimeOffset Timestamp { get; }
         public bool IsSnapshot => false;
         public int? CommandId => null;

@@ -124,7 +124,7 @@ public class ConfigController : ControllerBase
 
         if (existing is null)
         {
-            return CreatedAtAction(nameof(Get), new { ns, key }, dto);
+            return CreatedAtAction(nameof(Get), new { @namespace = ns, key }, dto);
         }
 
         return Ok(dto);

@@ -1,59 +1,64 @@
+using System.Buffers;
 using System.Text.Json;
 using Confman.Api.Cluster.Commands;
 using Confman.Api.Storage;
 using DotNext.IO;
-using DotNext.Net.Cluster.Consensus.Raft;
+using DotNext.Net.Cluster.Consensus.Raft.StateMachine;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Confman.Api.Cluster;
 
 /// <summary>
 /// Raft state machine that applies committed log entries to the config store.
-/// Uses MemoryBasedStateMachine - LiteDB handles persistence of the actual state.
+/// Uses SimpleStateMachine for WAL-based persistence. LiteDB handles actual config state.
 /// </summary>
-public sealed class ConfigStateMachine : MemoryBasedStateMachine
+public sealed class ConfigStateMachine : SimpleStateMachine
 {
-    private readonly IConfigStore _store;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ConfigStateMachine> _logger;
 
-    public ConfigStateMachine(
-        IConfigStore store,
-        ILogger<ConfigStateMachine> logger,
-        string path)
-        : base(path, 50, new Options
-        {
-            CompactionMode = CompactionMode.Background,
-            UseCaching = true
-        })
+    /// <summary>
+    /// Constructor for DI registration via UseStateMachine&lt;T&gt;().
+    /// </summary>
+    public ConfigStateMachine(IConfiguration configuration, IServiceProvider serviceProvider, ILoggerFactory loggerFactory)
+        : base(GetLogDirectory(configuration))
     {
-        _store = store;
-        _logger = logger;
+        _serviceProvider = serviceProvider;
+        _logger = loggerFactory.CreateLogger<ConfigStateMachine>();
+    }
+
+    private static DirectoryInfo GetLogDirectory(IConfiguration configuration)
+    {
+        var basePath = configuration["Storage:DataPath"] ?? "./data";
+        var logPath = Path.Combine(basePath, "raft-log");
+        return new DirectoryInfo(Path.GetFullPath(logPath));
     }
 
     /// <summary>
     /// Called when a log entry is committed and needs to be applied to the state machine.
     /// </summary>
-    protected override async ValueTask ApplyAsync(LogEntry entry)
+    /// <returns>True if a snapshot should be created after this entry.</returns>
+    protected override async ValueTask<bool> ApplyAsync(LogEntry entry, CancellationToken token)
     {
-        if (entry.IsSnapshot)
+        if (!entry.TryGetPayload(out var payload))
         {
-            // For snapshot entries, we don't need to do anything special
-            // since LiteDB maintains its own persistence
-            _logger.LogDebug("Processing snapshot at index {Index}", entry.Index);
-            return;
-        }
-
-        if (entry.Length == 0)
-        {
-            _logger.LogDebug("Skipping empty log entry at index {Index}", entry.Index);
-            return;
+            _logger.LogDebug("Skipping entry at index {Index} - no payload", entry.Index);
+            return false;
         }
 
         try
         {
-            var command = await DeserializeCommandAsync(entry);
-            await command.ApplyAsync(_store);
+            var command = DeserializeCommand(payload);
+
+            // Resolve the config store from DI - it's a singleton
+            var store = _serviceProvider.GetRequiredService<IConfigStore>();
+            await command.ApplyAsync(store, token);
+
             _logger.LogDebug("Applied {CommandType} at index {Index}, term {Term}",
                 command.GetType().Name, entry.Index, entry.Term);
+
+            // Create snapshot every 100 entries for compaction
+            return entry.Index % 100 == 0;
         }
         catch (Exception ex)
         {
@@ -63,48 +68,33 @@ public sealed class ConfigStateMachine : MemoryBasedStateMachine
     }
 
     /// <summary>
-    /// Creates a snapshot builder for log compaction.
-    /// Uses InlineSnapshotBuilder - LiteDB handles the actual state persistence.
+    /// Restores state from a snapshot file.
+    /// Since LiteDB handles actual state persistence, we just log the restoration.
     /// </summary>
-    protected override SnapshotBuilder CreateSnapshotBuilder(in SnapshotBuilderContext context)
+    protected override ValueTask RestoreAsync(FileInfo snapshotFile, CancellationToken token)
     {
-        _logger.LogDebug("Creating snapshot builder");
-        return new ConfigSnapshotBuilder(context, _logger);
-    }
-
-    private static async ValueTask<ICommand> DeserializeCommandAsync(LogEntry entry)
-    {
-        // Use DotNext's IDataTransferObject extension to read data
-        using var stream = new MemoryStream();
-        await ((IDataTransferObject)entry).WriteToAsync(stream);
-        stream.Position = 0;
-
-        var command = await JsonSerializer.DeserializeAsync<ICommand>(stream)
-            ?? throw new InvalidOperationException("Failed to deserialize command from log entry");
-
-        return command;
+        _logger.LogInformation("Restoring from snapshot: {SnapshotFile}", snapshotFile.FullName);
+        // LiteDB maintains the actual config state - nothing to restore here
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
-    /// Minimal snapshot builder using InlineSnapshotBuilder.
-    /// LiteDB maintains actual state persistence; this just enables log compaction.
+    /// Persists current state to a snapshot.
+    /// Since LiteDB handles actual state persistence, we write a minimal marker.
     /// </summary>
-    private sealed class ConfigSnapshotBuilder : InlineSnapshotBuilder
+    protected override async ValueTask PersistAsync(IAsyncBinaryWriter writer, CancellationToken token)
     {
-        private readonly ILogger _logger;
+        _logger.LogDebug("Creating snapshot");
+        // Write a simple marker - LiteDB has the actual state
+        var marker = System.Text.Encoding.UTF8.GetBytes("CONFMAN_SNAPSHOT");
+        await writer.Invoke(marker, token);
+    }
 
-        public ConfigSnapshotBuilder(in SnapshotBuilderContext context, ILogger logger)
-            : base(context)
-        {
-            _logger = logger;
-        }
-
-        protected override ValueTask ApplyAsync(LogEntry entry)
-        {
-            // No-op: LiteDB maintains the actual state
-            // This just processes entries for log compaction
-            _logger.LogDebug("SnapshotBuilder: Processing entry at index {Index}", entry.Index);
-            return ValueTask.CompletedTask;
-        }
+    private static ICommand DeserializeCommand(in ReadOnlySequence<byte> payload)
+    {
+        var reader = new Utf8JsonReader(payload);
+        var command = JsonSerializer.Deserialize<ICommand>(ref reader)
+            ?? throw new InvalidOperationException("Failed to deserialize command from log entry");
+        return command;
     }
 }
