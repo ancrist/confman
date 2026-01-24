@@ -199,6 +199,157 @@ Use `/health/ready` for load balancer health checks to route traffic away from n
 
 ---
 
+## Scaling Beyond a Single Raft Cluster
+
+Confman uses a **single Raft cluster** where every node has a complete copy of all data. This works well for configuration data (small, read-heavy). When data grows too large or write throughput becomes a bottleneck, you need **partitioned Raft** — multiple independent Raft groups, each owning a subset of data.
+
+### When Partitioning Becomes Necessary
+
+| Problem | Symptom | Solution |
+|---------|---------|----------|
+| Data too large | Won't fit on single node | Partition data across Raft groups |
+| Write throughput | Single leader bottleneck | Multiple Raft groups = multiple leaders |
+| Geographic distribution | Latency across regions | Regional Raft groups |
+
+### Partitioned Raft Architecture
+
+```
+                    ┌─────────────────┐
+                    │  Router/Proxy   │
+                    │  (knows which   │
+                    │   group owns    │
+                    │   which keys)   │
+                    └────────┬────────┘
+                             │
+        ┌────────────────────┼────────────────────┐
+        ▼                    ▼                    ▼
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│ Raft Group A  │    │ Raft Group B  │    │ Raft Group C  │
+│ Keys: 0-999   │    │ Keys: 1000-1999│   │ Keys: 2000-2999│
+│ ┌───┐┌───┐┌───┐│   │ ┌───┐┌───┐┌───┐│   │ ┌───┐┌───┐┌───┐│
+│ │ L ││ F ││ F ││   │ │ F ││ L ││ F ││   │ │ F ││ F ││ L ││
+│ └───┘└───┘└───┘│   │ └───┘└───┘└───┘│   │ └───┘└───┘└───┘│
+└───────────────┘    └───────────────┘    └───────────────┘
+```
+
+Each Raft group is independent — has its own leader, term, and log.
+
+### Partitioning Strategies
+
+#### 1. Consistent Hashing
+
+```
+Hash Ring:
+         0
+         │
+    ┌────┴────┐
+   /           \
+  ╱  Group A    ╲
+ │   (0-120)     │
+270───────────────90
+ │               │
+  ╲  Group C    ╱
+   \  Group B  /
+    └────┬────┘
+         │
+        180
+
+key = "prod/timeout"
+hash("prod/timeout") = 87  →  Group A
+```
+
+| Aspect | How It Works |
+|--------|--------------|
+| **Routing** | `hash(key) mod ring_size` → find owning group |
+| **Rebalance** | Add node → only neighboring range moves (k/n keys) |
+| **Virtual nodes** | Each physical node owns multiple ranges for balance |
+| **Used by** | Amazon DynamoDB, Apache Cassandra, Riak |
+
+#### 2. Range Partitioning
+
+```
+Key Space:
+├── a-m     → Raft Group 1
+├── n-z     → Raft Group 2
+└── 0-9     → Raft Group 3
+
+"prod/api-gateway" → starts with 'p' → Group 2
+"dev/settings"     → starts with 'd' → Group 1
+```
+
+| Aspect | How It Works |
+|--------|--------------|
+| **Routing** | Key prefix/range lookup |
+| **Range queries** | ✅ Efficient — co-located data |
+| **Hot spots** | Risk if one range is heavily accessed |
+| **Mitigation** | Auto-split busy ranges |
+| **Used by** | Google Spanner, CockroachDB, TiKV |
+
+#### 3. Directory-Based
+
+```
+┌─────────────────────────────────┐
+│   Directory Service             │
+│   (itself Raft-replicated)      │
+│                                 │
+│   "prod/*"     → Group 2        │
+│   "staging/*"  → Group 3        │
+│   "user:1-1000"→ Group 1        │
+│   "user:1001-*"→ Group 4        │
+└─────────────────────────────────┘
+           │
+           ▼
+     Route request to
+     correct Raft group
+```
+
+| Aspect | How It Works |
+|--------|--------------|
+| **Routing** | Lookup in directory service |
+| **Flexibility** | Maximum — arbitrary mappings |
+| **Trade-off** | Directory is SPOF |
+| **Mitigation** | Replicate directory (often with Raft!) |
+| **Used by** | Vitess (MySQL), custom sharding solutions |
+
+### Strategy Comparison
+
+| Strategy | Routing | Range Queries | Rebalance Cost | Hot Spot Risk |
+|----------|---------|---------------|----------------|---------------|
+| **Consistent Hash** | O(log n) | ❌ Poor | Low (k/n keys) | Medium |
+| **Range Partition** | O(log n) | ✅ Excellent | Medium | High |
+| **Directory-Based** | O(1) lookup | ✅ If designed | Flexible | Depends |
+
+### Real-World Examples
+
+| System | Strategy | Notes |
+|--------|----------|-------|
+| **CockroachDB** | Range + Raft | Auto-splits ranges, each range is a Raft group |
+| **TiKV** | Range + Raft | Raft groups called "Regions", 96MB default |
+| **etcd** | Single Raft | No partitioning, full replication (like Confman) |
+| **Consul** | Single Raft | No partitioning for KV store |
+| **Kafka** | Partition + Raft | Each partition is a Raft group (KRaft mode) |
+
+### If Confman Needed Partitioning
+
+```
+Option A: Hash by namespace
+┌─────────────────────────────────────┐
+│ hash("prod") mod 3 = 0 → Group A    │
+│ hash("staging") mod 3 = 1 → Group B │
+│ hash("dev") mod 3 = 2 → Group C     │
+└─────────────────────────────────────┘
+
+Option B: Range by namespace prefix
+┌─────────────────────────────────────┐
+│ a-m/* → Group A                     │
+│ n-z/* → Group B                     │
+└─────────────────────────────────────┘
+```
+
+For configuration data, **single Raft cluster is usually sufficient** — the data is small and read-heavy.
+
+---
+
 ## References
 
 - [Raft Paper](https://raft.github.io/raft.pdf) — Original consensus algorithm
