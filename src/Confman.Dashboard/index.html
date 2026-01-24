@@ -231,6 +231,9 @@
     <div class="controls">
         <button onclick="refresh()">Refresh Now</button>
         <button id="autoRefreshBtn" class="active" onclick="toggleAutoRefresh()">Auto-refresh: ON</button>
+        <a id="swaggerLink" href="#" target="_blank" style="display: none;">
+            <button>API Docs (Swagger)</button>
+        </a>
     </div>
 
     <div class="cluster" id="cluster"></div>
@@ -304,7 +307,7 @@
                         <span class="info-value ${roleClass}">${role.toUpperCase()}</span>
                     </div>
                     <div class="info-row">
-                        <span class="info-label">Term</span>
+                        <span class="info-label">Epoch</span>
                         <span class="info-value">${term}</span>
                     </div>
                     <div class="info-row">
@@ -465,6 +468,21 @@
             // Fetch and display stored configs
             const configs = await fetchConfigs(results);
             document.getElementById('configs').innerHTML = renderConfigs(configs);
+
+            // Update Swagger link (prefer leader, fallback to any reachable node)
+            const swaggerLink = document.getElementById('swaggerLink');
+            const leaderNode = results.find((r, i) => r.reachable && r.cluster?.role === 'leader');
+            const anyNode = results.find((r, i) => r.reachable);
+
+            if (leaderNode || anyNode) {
+                const targetIdx = leaderNode
+                    ? results.indexOf(leaderNode)
+                    : results.indexOf(anyNode);
+                swaggerLink.href = `${nodes[targetIdx].url}/swagger`;
+                swaggerLink.style.display = 'inline-block';
+            } else {
+                swaggerLink.style.display = 'none';
+            }
 
             document.getElementById('lastUpdate').textContent = formatTime(new Date());
         }

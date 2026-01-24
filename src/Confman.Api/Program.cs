@@ -148,12 +148,9 @@ try
     // CORS for dashboard (running on separate port)
     app.UseCors("Dashboard");
 
-    // Swagger UI in development
-    if (app.Environment.IsDevelopment())
-    {
-        app.UseSwagger();
-        app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Confman API v1"));
-    }
+    // Swagger UI (enabled for all environments - internal service)
+    app.UseSwagger();
+    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Confman API v1"));
 
     app.UseHttpsRedirection();
 
