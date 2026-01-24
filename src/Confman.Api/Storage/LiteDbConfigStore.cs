@@ -57,6 +57,12 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
         return Task.FromResult<IReadOnlyList<ConfigEntry>>(entries);
     }
 
+    public Task<IReadOnlyList<ConfigEntry>> ListAllAsync(CancellationToken ct = default)
+    {
+        var entries = _configs.FindAll().ToList();
+        return Task.FromResult<IReadOnlyList<ConfigEntry>>(entries);
+    }
+
     public Task SetAsync(ConfigEntry entry, CancellationToken ct = default)
     {
         var existing = _configs.FindOne(x => x.Namespace == entry.Namespace && x.Key == entry.Key);

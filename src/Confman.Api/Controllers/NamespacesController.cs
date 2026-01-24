@@ -119,7 +119,7 @@ public class NamespacesController : ControllerBase
 
         if (existing is null)
         {
-            return CreatedAtAction(nameof(Get), new { ns }, dto);
+            return CreatedAtAction(nameof(Get), new { @namespace = ns }, dto);
         }
 
         return Ok(dto);

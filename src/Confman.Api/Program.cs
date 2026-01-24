@@ -126,6 +126,17 @@ try
     // Configure RFC 7807 Problem Details
     builder.Services.AddProblemDetails();
 
+    // Add CORS for dashboard
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("Dashboard", policy =>
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        });
+    });
+
     var app = builder.Build();
 
     // IMPORTANT: Consensus protocol handler must come BEFORE authentication
@@ -133,6 +144,9 @@ try
 
     // Correlation ID for request tracing
     app.UseCorrelationId();
+
+    // CORS for dashboard (running on separate port)
+    app.UseCors("Dashboard");
 
     // Swagger UI in development
     if (app.Environment.IsDevelopment())
@@ -150,6 +164,24 @@ try
     // Health endpoints (no auth required)
     app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTimeOffset.UtcNow }))
         .AllowAnonymous();
+
+    // List all configs (for dashboard)
+    app.MapGet("/api/v1/configs", async (IConfigStore store, CancellationToken ct) =>
+    {
+        var configs = await store.ListAllAsync(ct);
+        var result = configs.Select(c => new
+        {
+            ns = c.Namespace,
+            key = c.Key,
+            value = c.Value,
+            type = c.Type,
+            version = c.Version,
+            updatedAt = c.UpdatedAt,
+            updatedBy = c.UpdatedBy
+        });
+
+        return Results.Ok(result);
+    }).AllowAnonymous();
 
     app.MapGet("/health/ready", (IRaftCluster cluster) =>
     {

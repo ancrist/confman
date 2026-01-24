@@ -11,6 +11,7 @@ public interface IConfigStore
     // Config operations
     Task<ConfigEntry?> GetAsync(string ns, string key, CancellationToken ct = default);
     Task<IReadOnlyList<ConfigEntry>> ListAsync(string ns, CancellationToken ct = default);
+    Task<IReadOnlyList<ConfigEntry>> ListAllAsync(CancellationToken ct = default);
     Task SetAsync(ConfigEntry entry, CancellationToken ct = default);
     Task DeleteAsync(string ns, string key, CancellationToken ct = default);
 
