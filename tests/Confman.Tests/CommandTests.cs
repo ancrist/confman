@@ -53,7 +53,7 @@ public class CommandTests : IDisposable
             Author = "test-author"
         };
 
-        await command.ApplyAsync(_store);
+        await command.ApplyAsync(_store, isLeader: true);
 
         var entry = await _store.GetAsync("test-ns", "test-key");
         Assert.NotNull(entry);
@@ -76,7 +76,7 @@ public class CommandTests : IDisposable
             Value = "value-v1",
             Author = "author1"
         };
-        await createCmd.ApplyAsync(_store);
+        await createCmd.ApplyAsync(_store, isLeader: true);
 
         // Update entry
         var updateCmd = new SetConfigCommand
@@ -86,7 +86,7 @@ public class CommandTests : IDisposable
             Value = "value-v2",
             Author = "author2"
         };
-        await updateCmd.ApplyAsync(_store);
+        await updateCmd.ApplyAsync(_store, isLeader: true);
 
         var entry = await _store.GetAsync("test-ns", "test-key");
         Assert.Equal("value-v2", entry!.Value);
@@ -96,6 +96,31 @@ public class CommandTests : IDisposable
         Assert.Equal("config.updated", audit[0].Action);
         Assert.Equal("value-v1", audit[0].OldValue);
         Assert.Equal("value-v2", audit[0].NewValue);
+    }
+
+    [Fact]
+    public async Task SetConfigCommand_AsFollower_NoAuditCreated()
+    {
+        // When isLeader is false (follower node), no audit events should be created
+        var command = new SetConfigCommand
+        {
+            Namespace = "follower-test",
+            Key = "test-key",
+            Value = "test-value",
+            Author = "test-author"
+        };
+
+        // Apply as follower (isLeader: false)
+        await command.ApplyAsync(_store, isLeader: false);
+
+        // Config should still be created
+        var entry = await _store.GetAsync("follower-test", "test-key");
+        Assert.NotNull(entry);
+        Assert.Equal("test-value", entry.Value);
+
+        // But NO audit event should exist (only leader creates audit)
+        var audit = await _store.GetAuditEventsAsync("follower-test");
+        Assert.Empty(audit);
     }
 
     #endregion
@@ -112,7 +137,7 @@ public class CommandTests : IDisposable
             Key = "test-key",
             Value = "test-value",
             Author = "creator"
-        }.ApplyAsync(_store);
+        }.ApplyAsync(_store, isLeader: true);
 
         // Delete it
         var deleteCmd = new DeleteConfigCommand
@@ -121,7 +146,7 @@ public class CommandTests : IDisposable
             Key = "test-key",
             Author = "deleter"
         };
-        await deleteCmd.ApplyAsync(_store);
+        await deleteCmd.ApplyAsync(_store, isLeader: true);
 
         var entry = await _store.GetAsync("test-ns", "test-key");
         Assert.Null(entry);
@@ -143,7 +168,7 @@ public class CommandTests : IDisposable
             Author = "user"
         };
 
-        await deleteCmd.ApplyAsync(_store);
+        await deleteCmd.ApplyAsync(_store, isLeader: true);
 
         var audit = await _store.GetAuditEventsAsync("nonexistent");
         Assert.Empty(audit); // No audit event for non-existent delete
@@ -164,7 +189,7 @@ public class CommandTests : IDisposable
             Author = "creator"
         };
 
-        await command.ApplyAsync(_store);
+        await command.ApplyAsync(_store, isLeader: true);
 
         var ns = await _store.GetNamespaceAsync("my-namespace");
         Assert.NotNull(ns);
@@ -186,7 +211,7 @@ public class CommandTests : IDisposable
             Description = "Original",
             Owner = "owner",
             Author = "creator"
-        }.ApplyAsync(_store);
+        }.ApplyAsync(_store, isLeader: true);
 
         // Update
         await new SetNamespaceCommand
@@ -195,7 +220,7 @@ public class CommandTests : IDisposable
             Description = "Updated",
             Owner = "owner",
             Author = "updater"
-        }.ApplyAsync(_store);
+        }.ApplyAsync(_store, isLeader: true);
 
         var ns = await _store.GetNamespaceAsync("my-namespace");
         Assert.Equal("Updated", ns!.Description);
@@ -221,14 +246,14 @@ public class CommandTests : IDisposable
             Description = "To delete",
             Owner = "owner",
             Author = "creator"
-        }.ApplyAsync(_store);
+        }.ApplyAsync(_store, isLeader: true);
 
         // Delete
         await new DeleteNamespaceCommand
         {
             Path = "my-namespace",
             Author = "deleter"
-        }.ApplyAsync(_store);
+        }.ApplyAsync(_store, isLeader: true);
 
         var ns = await _store.GetNamespaceAsync("my-namespace");
         Assert.Null(ns);

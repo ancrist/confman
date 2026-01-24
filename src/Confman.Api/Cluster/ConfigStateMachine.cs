@@ -3,6 +3,7 @@ using System.Text.Json;
 using Confman.Api.Cluster.Commands;
 using Confman.Api.Storage;
 using DotNext.IO;
+using DotNext.Net.Cluster.Consensus.Raft;
 using DotNext.Net.Cluster.Consensus.Raft.StateMachine;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -50,12 +51,16 @@ public sealed class ConfigStateMachine : SimpleStateMachine
         {
             var command = DeserializeCommand(payload);
 
-            // Resolve the config store from DI - it's a singleton
+            // Resolve services from DI
             var store = _serviceProvider.GetRequiredService<IConfigStore>();
-            await command.ApplyAsync(store, token);
+            var cluster = _serviceProvider.GetService<IRaftCluster>();
 
-            _logger.LogDebug("Applied {CommandType} at index {Index}, term {Term}",
-                command.GetType().Name, entry.Index, entry.Term);
+            // Only create audit events on the leader to avoid duplicates during log replay
+            var isLeader = cluster is not null && !cluster.LeadershipToken.IsCancellationRequested;
+            await command.ApplyAsync(store, isLeader, token);
+
+            _logger.LogDebug("Applied {CommandType} at index {Index}, term {Term}, isLeader={IsLeader}",
+                command.GetType().Name, entry.Index, entry.Term, isLeader);
 
             // Create snapshot every 100 entries for compaction
             return entry.Index % 100 == 0;

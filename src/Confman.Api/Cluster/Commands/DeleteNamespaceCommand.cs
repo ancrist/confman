@@ -12,7 +12,7 @@ public sealed record DeleteNamespaceCommand : ICommand
     public required string Author { get; init; }
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
-    public async Task ApplyAsync(IConfigStore store, CancellationToken ct = default)
+    public async Task ApplyAsync(IConfigStore store, bool isLeader, CancellationToken ct = default)
     {
         var existing = await store.GetNamespaceAsync(Path, ct);
 
@@ -20,16 +20,20 @@ public sealed record DeleteNamespaceCommand : ICommand
         {
             await store.DeleteNamespaceAsync(Path, ct);
 
-            await store.AppendAuditAsync(new AuditEvent
+            // Only create audit events on the leader to avoid duplicates during log replay
+            if (isLeader)
             {
-                Timestamp = Timestamp,
-                Action = "namespace.deleted",
-                Actor = Author,
-                Namespace = Path,
-                Key = null,
-                OldValue = existing.Description,
-                NewValue = null
-            }, ct);
+                await store.AppendAuditAsync(new AuditEvent
+                {
+                    Timestamp = Timestamp,
+                    Action = "namespace.deleted",
+                    Actor = Author,
+                    Namespace = Path,
+                    Key = null,
+                    OldValue = existing.Description,
+                    NewValue = null
+                }, ct);
+            }
         }
     }
 }

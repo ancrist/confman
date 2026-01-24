@@ -15,7 +15,7 @@ public sealed record SetConfigCommand : ICommand
     public required string Author { get; init; }
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
-    public async Task ApplyAsync(IConfigStore store, CancellationToken ct = default)
+    public async Task ApplyAsync(IConfigStore store, bool isLeader, CancellationToken ct = default)
     {
         // Get existing entry to capture old value for audit
         var existing = await store.GetAsync(Namespace, Key, ct);
@@ -32,15 +32,19 @@ public sealed record SetConfigCommand : ICommand
 
         await store.SetAsync(entry, ct);
 
-        await store.AppendAuditAsync(new AuditEvent
+        // Only create audit events on the leader to avoid duplicates during log replay
+        if (isLeader)
         {
-            Timestamp = Timestamp,
-            Action = existing is null ? "config.created" : "config.updated",
-            Actor = Author,
-            Namespace = Namespace,
-            Key = Key,
-            OldValue = existing?.Value,
-            NewValue = Value
-        }, ct);
+            await store.AppendAuditAsync(new AuditEvent
+            {
+                Timestamp = Timestamp,
+                Action = existing is null ? "config.created" : "config.updated",
+                Actor = Author,
+                Namespace = Namespace,
+                Key = Key,
+                OldValue = existing?.Value,
+                NewValue = Value
+            }, ct);
+        }
     }
 }
