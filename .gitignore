@@ -52,3 +52,9 @@ appsettings.Development.json
 *.pfx
 *.key
 secrets.json
+
+# Node.js (Dashboard)
+node_modules/
+
+# Cluster data directories
+data-*/
