@@ -93,8 +93,9 @@ public sealed class ConfigStateMachine : SimpleStateMachine
 
             if (snapshot.Version != 1)
             {
-                _logger.LogError("Unsupported snapshot version: {Version}", snapshot.Version);
-                return;
+                throw new InvalidOperationException(
+                    $"Unsupported snapshot version: {snapshot.Version}. This node cannot restore from a snapshot " +
+                    "created by a newer version. Please upgrade this node or use a compatible snapshot.");
             }
 
             var store = _serviceProvider.GetRequiredService<IConfigStore>();

@@ -182,22 +182,35 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
         _logger.LogInformation("Restoring from snapshot: {ConfigCount} configs, {NamespaceCount} namespaces, {AuditCount} audit events",
             snapshot.Configs.Count, snapshot.Namespaces.Count, snapshot.AuditEvents.Count);
 
-        // Clear existing data
-        _configs.DeleteAll();
-        _namespaces.DeleteAll();
-        _audit.DeleteAll();
+        // Use transaction to ensure atomicity - if crash occurs, data remains intact
+        _db.BeginTrans();
+        try
+        {
+            // Clear existing data
+            _configs.DeleteAll();
+            _namespaces.DeleteAll();
+            _audit.DeleteAll();
 
-        // Restore from snapshot
-        if (snapshot.Configs.Count > 0)
-            _configs.InsertBulk(snapshot.Configs);
+            // Restore from snapshot
+            if (snapshot.Configs.Count > 0)
+                _configs.InsertBulk(snapshot.Configs);
 
-        if (snapshot.Namespaces.Count > 0)
-            _namespaces.InsertBulk(snapshot.Namespaces);
+            if (snapshot.Namespaces.Count > 0)
+                _namespaces.InsertBulk(snapshot.Namespaces);
 
-        if (snapshot.AuditEvents.Count > 0)
-            _audit.InsertBulk(snapshot.AuditEvents);
+            if (snapshot.AuditEvents.Count > 0)
+                _audit.InsertBulk(snapshot.AuditEvents);
 
-        _logger.LogInformation("Snapshot restore complete");
+            _db.Commit();
+            _logger.LogInformation("Snapshot restore complete");
+        }
+        catch (Exception ex)
+        {
+            _db.Rollback();
+            _logger.LogError(ex, "Snapshot restore failed, rolled back transaction");
+            throw;
+        }
+
         return Task.CompletedTask;
     }
 
