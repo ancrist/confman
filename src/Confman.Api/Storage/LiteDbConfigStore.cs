@@ -1,3 +1,4 @@
+using Confman.Api.Cluster;
 using Confman.Api.Models;
 using LiteDB;
 
@@ -142,8 +143,9 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
 
     public Task AppendAuditAsync(AuditEvent evt, CancellationToken ct = default)
     {
-        _audit.Insert(evt);
-        _logger.LogDebug("Appended audit event: {Action} on {Ns}/{Key}",
+        // Use upsert for idempotency during log replay on all nodes
+        _audit.Upsert(evt);
+        _logger.LogDebug("Upserted audit event: {Action} on {Ns}/{Key}",
             evt.Action, evt.Namespace, evt.Key);
         return Task.CompletedTask;
     }
@@ -157,6 +159,46 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
             .ToList();
 
         return Task.FromResult<IReadOnlyList<AuditEvent>>(events);
+    }
+
+    #endregion
+
+    #region Bulk Operations for Snapshots
+
+    public Task<List<ConfigEntry>> GetAllConfigsAsync(CancellationToken ct = default)
+    {
+        var configs = _configs.FindAll().ToList();
+        return Task.FromResult(configs);
+    }
+
+    public Task<List<AuditEvent>> GetAllAuditEventsAsync(CancellationToken ct = default)
+    {
+        var events = _audit.FindAll().ToList();
+        return Task.FromResult(events);
+    }
+
+    public Task RestoreFromSnapshotAsync(SnapshotData snapshot, CancellationToken ct = default)
+    {
+        _logger.LogInformation("Restoring from snapshot: {ConfigCount} configs, {NamespaceCount} namespaces, {AuditCount} audit events",
+            snapshot.Configs.Count, snapshot.Namespaces.Count, snapshot.AuditEvents.Count);
+
+        // Clear existing data
+        _configs.DeleteAll();
+        _namespaces.DeleteAll();
+        _audit.DeleteAll();
+
+        // Restore from snapshot
+        if (snapshot.Configs.Count > 0)
+            _configs.InsertBulk(snapshot.Configs);
+
+        if (snapshot.Namespaces.Count > 0)
+            _namespaces.InsertBulk(snapshot.Namespaces);
+
+        if (snapshot.AuditEvents.Count > 0)
+            _audit.InsertBulk(snapshot.AuditEvents);
+
+        _logger.LogInformation("Snapshot restore complete");
+        return Task.CompletedTask;
     }
 
     #endregion

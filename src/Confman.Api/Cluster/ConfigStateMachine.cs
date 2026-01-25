@@ -1,9 +1,9 @@
 using System.Buffers;
 using System.Text.Json;
 using Confman.Api.Cluster.Commands;
+using Confman.Api.Models;
 using Confman.Api.Storage;
 using DotNext.IO;
-using DotNext.Net.Cluster.Consensus.Raft;
 using DotNext.Net.Cluster.Consensus.Raft.StateMachine;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -37,6 +37,7 @@ public sealed class ConfigStateMachine : SimpleStateMachine
 
     /// <summary>
     /// Called when a log entry is committed and needs to be applied to the state machine.
+    /// Audit events are now created on ALL nodes - storage handles idempotency via upsert.
     /// </summary>
     /// <returns>True if a snapshot should be created after this entry.</returns>
     protected override async ValueTask<bool> ApplyAsync(LogEntry entry, CancellationToken token)
@@ -51,16 +52,15 @@ public sealed class ConfigStateMachine : SimpleStateMachine
         {
             var command = DeserializeCommand(payload);
 
-            // Resolve services from DI
+            // Resolve store from DI
             var store = _serviceProvider.GetRequiredService<IConfigStore>();
-            var cluster = _serviceProvider.GetService<IRaftCluster>();
 
-            // Only create audit events on the leader to avoid duplicates during log replay
-            var isLeader = cluster is not null && !cluster.LeadershipToken.IsCancellationRequested;
-            await command.ApplyAsync(store, isLeader, token);
+            // Apply command on all nodes - audit events created everywhere
+            // Storage uses upsert for idempotency during log replay
+            await command.ApplyAsync(store, token);
 
-            _logger.LogDebug("Applied {CommandType} at index {Index}, term {Term}, isLeader={IsLeader}",
-                command.GetType().Name, entry.Index, entry.Term, isLeader);
+            _logger.LogDebug("Applied {CommandType} at index {Index}, term {Term}",
+                command.GetType().Name, entry.Index, entry.Term);
 
             // Create snapshot every 100 entries for compaction
             return entry.Index % 100 == 0;
@@ -74,25 +74,78 @@ public sealed class ConfigStateMachine : SimpleStateMachine
 
     /// <summary>
     /// Restores state from a snapshot file.
-    /// Since LiteDB handles actual state persistence, we just log the restoration.
+    /// Deserializes and restores all configs, namespaces, and audit events.
     /// </summary>
-    protected override ValueTask RestoreAsync(FileInfo snapshotFile, CancellationToken token)
+    protected override async ValueTask RestoreAsync(FileInfo snapshotFile, CancellationToken token)
     {
         _logger.LogInformation("Restoring from snapshot: {SnapshotFile}", snapshotFile.FullName);
-        // LiteDB maintains the actual config state - nothing to restore here
-        return ValueTask.CompletedTask;
+
+        try
+        {
+            var json = await File.ReadAllBytesAsync(snapshotFile.FullName, token);
+            var snapshot = JsonSerializer.Deserialize<SnapshotData>(json);
+
+            if (snapshot is null)
+            {
+                _logger.LogError("Failed to deserialize snapshot - null result");
+                return;
+            }
+
+            if (snapshot.Version != 1)
+            {
+                _logger.LogError("Unsupported snapshot version: {Version}", snapshot.Version);
+                return;
+            }
+
+            var store = _serviceProvider.GetRequiredService<IConfigStore>();
+            await store.RestoreFromSnapshotAsync(snapshot, token);
+
+            _logger.LogInformation("Snapshot restored: {ConfigCount} configs, {NamespaceCount} namespaces, {AuditCount} audit events",
+                snapshot.Configs.Count, snapshot.Namespaces.Count, snapshot.AuditEvents.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to restore from snapshot");
+            throw;
+        }
     }
 
     /// <summary>
     /// Persists current state to a snapshot.
-    /// Since LiteDB handles actual state persistence, we write a minimal marker.
+    /// Serializes all configs, namespaces, and audit events to JSON.
     /// </summary>
     protected override async ValueTask PersistAsync(IAsyncBinaryWriter writer, CancellationToken token)
     {
-        _logger.LogDebug("Creating snapshot");
-        // Write a simple marker - LiteDB has the actual state
-        var marker = System.Text.Encoding.UTF8.GetBytes("CONFMAN_SNAPSHOT");
-        await writer.Invoke(marker, token);
+        _logger.LogInformation("Creating snapshot");
+
+        try
+        {
+            var store = _serviceProvider.GetRequiredService<IConfigStore>();
+
+            var snapshot = new SnapshotData
+            {
+                Version = 1,
+                Configs = await store.GetAllConfigsAsync(token),
+                Namespaces = (await store.ListNamespacesAsync(token)).ToList(),
+                AuditEvents = await store.GetAllAuditEventsAsync(token),
+                Timestamp = DateTimeOffset.UtcNow
+            };
+
+            var json = JsonSerializer.SerializeToUtf8Bytes(snapshot, new JsonSerializerOptions
+            {
+                WriteIndented = false
+            });
+
+            await writer.Invoke(json, token);
+
+            _logger.LogInformation("Snapshot created: {ConfigCount} configs, {NamespaceCount} namespaces, {AuditCount} audit events, {Size} bytes",
+                snapshot.Configs.Count, snapshot.Namespaces.Count, snapshot.AuditEvents.Count, json.Length);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create snapshot");
+            throw;
+        }
     }
 
     private static ICommand DeserializeCommand(in ReadOnlySequence<byte> payload)
