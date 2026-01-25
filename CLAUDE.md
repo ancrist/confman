@@ -357,22 +357,32 @@ CONFMAN_NODE_ID=node1 dotnet run --project src/Confman.Api
 
 ---
 
-## API Endpoints (Planned)
+## API Endpoints
 
-### Config Operations
-- `GET /api/config/{namespace}/{key}` — Read a config value
-- `PUT /api/config/{namespace}/{key}` — Write a config value (leader only)
-- `DELETE /api/config/{namespace}/{key}` — Delete a config value
-- `GET /api/config/{namespace}` — List keys in namespace
+### Config Operations (v1)
+- `GET /api/v1/namespaces/{namespace}/config` — List all configs in namespace
+- `GET /api/v1/namespaces/{namespace}/config/{key}` — Read a config value
+- `PUT /api/v1/namespaces/{namespace}/config/{key}` — Create/update config (redirects to leader)
+- `DELETE /api/v1/namespaces/{namespace}/config/{key}` — Delete config (redirects to leader)
 
-### Admin Operations
-- `GET /api/admin/status` — Cluster health and leader info
-- `POST /api/admin/rollback` — Rollback to previous snapshot
-- `GET /api/admin/audit/{namespace}` — Audit log for namespace
+### Namespace Operations (v1)
+- `GET /api/v1/namespaces` — List all namespaces
+- `GET /api/v1/namespaces/{namespace}` — Get namespace details
+- `PUT /api/v1/namespaces/{namespace}` — Create/update namespace (redirects to leader)
+- `DELETE /api/v1/namespaces/{namespace}` — Delete namespace (redirects to leader)
+
+### Audit Operations (v1)
+- `GET /api/v1/namespaces/{namespace}/audit?limit=N` — Audit log for namespace
+
+### Dashboard/Utility
+- `GET /api/v1/configs` — List ALL configs across all namespaces (used by dashboard)
 
 ### Health
 - `GET /health` — Liveness check
 - `GET /health/ready` — Readiness check (includes quorum status)
+
+### Documentation
+- `GET /swagger` — Swagger UI (OpenAPI documentation)
 
 ---
 
@@ -409,6 +419,20 @@ CONFMAN_NODE_ID=node1 dotnet run --project src/Confman.Api
 - [ ] Staged rollout targeting logic (deferred feature)
 - [ ] mTLS for inter-node and client auth (future)
 - [ ] Custom RBAC roles (future)
+
+## Known Issues
+
+### GitHub Issues
+- **#2** Audit events not replicated across cluster nodes — audit only created on leader, lost on leadership change
+- **#3** Snapshots don't include full state — recovering nodes lose audit history after disk failure
+
+### Architecture Gotchas
+- **Audit events**: Only created on leader via `isLeader` check in commands. Dashboard works around this by fetching from ALL nodes and deduplicating.
+- **Snapshots**: Current implementation in `ConfigStateMachine.cs` writes only a marker, not actual state. LiteDB data not serialized.
+- **Leader forwarding**: Write operations (PUT/DELETE) return HTTP 307 redirect to leader. Clients must follow redirects.
+- **Dashboard polling**: 2-second interval via `setInterval(refresh, 2000)`. No real-time push (SSE/WebSocket).
+
+---
 
 ## Brainstorm Documents
 
