@@ -1,11 +1,9 @@
 using System.Buffers;
 using System.Text.Json;
 using Confman.Api.Cluster.Commands;
-using Confman.Api.Models;
 using Confman.Api.Storage;
 using DotNext.IO;
 using DotNext.Net.Cluster.Consensus.Raft.StateMachine;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Confman.Api.Cluster;
 
