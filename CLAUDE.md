@@ -423,14 +423,14 @@ CONFMAN_NODE_ID=node1 dotnet run --project src/Confman.Api
 ## Known Issues
 
 ### GitHub Issues
-- **#2** Audit events not replicated across cluster nodes — audit only created on leader, lost on leadership change
-- **#3** Snapshots don't include full state — recovering nodes lose audit history after disk failure
+- ~~**#2** Audit events not replicated across cluster nodes~~ — **FIXED**: Audit events now created on all nodes with idempotent upsert
+- ~~**#3** Snapshots don't include full state~~ — **FIXED**: Snapshots now serialize all configs, namespaces, and audit events
 
-### Architecture Gotchas
-- **Audit events**: Only created on leader via `isLeader` check in commands. Dashboard works around this by fetching from ALL nodes and deduplicating.
-- **Snapshots**: Current implementation in `ConfigStateMachine.cs` writes only a marker, not actual state. LiteDB data not serialized.
+### Architecture Notes
+- **Audit events**: Created on ALL nodes during state machine apply. Uses deterministic ID (timestamp+namespace+key) with upsert for idempotency during log replay.
+- **Snapshots**: `PersistAsync` serializes full state (configs, namespaces, audit) to JSON. `RestoreAsync` clears and restores all data.
 - **Leader forwarding**: Write operations (PUT/DELETE) return HTTP 307 redirect to leader. Clients must follow redirects.
-- **Dashboard polling**: 2-second interval via `setInterval(refresh, 2000)`. No real-time push (SSE/WebSocket).
+- **Dashboard polling**: 2-second interval via `setInterval(refresh, 2000)`. No real-time push (SSE/WebSocket). Dashboard now queries any single node (all have consistent audit data).
 
 ---
 

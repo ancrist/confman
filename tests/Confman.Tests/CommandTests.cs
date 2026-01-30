@@ -53,7 +53,7 @@ public class CommandTests : IDisposable
             Author = "test-author"
         };
 
-        await command.ApplyAsync(_store, isLeader: true);
+        await command.ApplyAsync(_store);
 
         var entry = await _store.GetAsync("test-ns", "test-key");
         Assert.NotNull(entry);
@@ -76,7 +76,7 @@ public class CommandTests : IDisposable
             Value = "value-v1",
             Author = "author1"
         };
-        await createCmd.ApplyAsync(_store, isLeader: true);
+        await createCmd.ApplyAsync(_store);
 
         // Update entry
         var updateCmd = new SetConfigCommand
@@ -86,7 +86,7 @@ public class CommandTests : IDisposable
             Value = "value-v2",
             Author = "author2"
         };
-        await updateCmd.ApplyAsync(_store, isLeader: true);
+        await updateCmd.ApplyAsync(_store);
 
         var entry = await _store.GetAsync("test-ns", "test-key");
         Assert.Equal("value-v2", entry!.Value);
@@ -99,28 +99,38 @@ public class CommandTests : IDisposable
     }
 
     [Fact]
-    public async Task SetConfigCommand_AsFollower_NoAuditCreated()
+    public async Task SetConfigCommand_IdempotentAudit_NoDuplicates()
     {
-        // When isLeader is false (follower node), no audit events should be created
+        // When the same command is applied multiple times (log replay scenario),
+        // only one audit event should exist due to idempotent upsert.
+        // Note: On replay, action may change from "created" to "updated" since
+        // the entry already exists, but the ID is based on timestamp+ns+key only.
+        var timestamp = DateTimeOffset.UtcNow;
         var command = new SetConfigCommand
         {
-            Namespace = "follower-test",
+            Namespace = "idempotent-test",
             Key = "test-key",
             Value = "test-value",
-            Author = "test-author"
+            Author = "test-author",
+            Timestamp = timestamp
         };
 
-        // Apply as follower (isLeader: false)
-        await command.ApplyAsync(_store, isLeader: false);
+        // Apply the same command multiple times (simulates log replay on restart)
+        await command.ApplyAsync(_store);
+        await command.ApplyAsync(_store);
+        await command.ApplyAsync(_store);
 
-        // Config should still be created
-        var entry = await _store.GetAsync("follower-test", "test-key");
+        // Config should exist
+        var entry = await _store.GetAsync("idempotent-test", "test-key");
         Assert.NotNull(entry);
         Assert.Equal("test-value", entry.Value);
 
-        // But NO audit event should exist (only leader creates audit)
-        var audit = await _store.GetAuditEventsAsync("follower-test");
-        Assert.Empty(audit);
+        // Only ONE audit event should exist (upsert deduplicates by ID)
+        // The action will be "config.updated" since replays see existing entry
+        var audit = await _store.GetAuditEventsAsync("idempotent-test");
+        Assert.Single(audit);
+        // Action is "updated" because subsequent applies see the entry exists
+        Assert.Equal("config.updated", audit[0].Action);
     }
 
     #endregion
@@ -137,7 +147,7 @@ public class CommandTests : IDisposable
             Key = "test-key",
             Value = "test-value",
             Author = "creator"
-        }.ApplyAsync(_store, isLeader: true);
+        }.ApplyAsync(_store);
 
         // Delete it
         var deleteCmd = new DeleteConfigCommand
@@ -146,7 +156,7 @@ public class CommandTests : IDisposable
             Key = "test-key",
             Author = "deleter"
         };
-        await deleteCmd.ApplyAsync(_store, isLeader: true);
+        await deleteCmd.ApplyAsync(_store);
 
         var entry = await _store.GetAsync("test-ns", "test-key");
         Assert.Null(entry);
@@ -168,7 +178,7 @@ public class CommandTests : IDisposable
             Author = "user"
         };
 
-        await deleteCmd.ApplyAsync(_store, isLeader: true);
+        await deleteCmd.ApplyAsync(_store);
 
         var audit = await _store.GetAuditEventsAsync("nonexistent");
         Assert.Empty(audit); // No audit event for non-existent delete
@@ -189,7 +199,7 @@ public class CommandTests : IDisposable
             Author = "creator"
         };
 
-        await command.ApplyAsync(_store, isLeader: true);
+        await command.ApplyAsync(_store);
 
         var ns = await _store.GetNamespaceAsync("my-namespace");
         Assert.NotNull(ns);
@@ -211,7 +221,7 @@ public class CommandTests : IDisposable
             Description = "Original",
             Owner = "owner",
             Author = "creator"
-        }.ApplyAsync(_store, isLeader: true);
+        }.ApplyAsync(_store);
 
         // Update
         await new SetNamespaceCommand
@@ -220,7 +230,7 @@ public class CommandTests : IDisposable
             Description = "Updated",
             Owner = "owner",
             Author = "updater"
-        }.ApplyAsync(_store, isLeader: true);
+        }.ApplyAsync(_store);
 
         var ns = await _store.GetNamespaceAsync("my-namespace");
         Assert.Equal("Updated", ns!.Description);
@@ -246,14 +256,14 @@ public class CommandTests : IDisposable
             Description = "To delete",
             Owner = "owner",
             Author = "creator"
-        }.ApplyAsync(_store, isLeader: true);
+        }.ApplyAsync(_store);
 
         // Delete
         await new DeleteNamespaceCommand
         {
             Path = "my-namespace",
             Author = "deleter"
-        }.ApplyAsync(_store, isLeader: true);
+        }.ApplyAsync(_store);
 
         var ns = await _store.GetNamespaceAsync("my-namespace");
         Assert.Null(ns);

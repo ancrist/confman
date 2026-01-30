@@ -13,7 +13,7 @@ public sealed record DeleteConfigCommand : ICommand
     public required string Author { get; init; }
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
-    public async Task ApplyAsync(IConfigStore store, bool isLeader, CancellationToken ct = default)
+    public async Task ApplyAsync(IConfigStore store, CancellationToken ct = default)
     {
         // Get existing entry to capture old value for audit
         var existing = await store.GetAsync(Namespace, Key, ct);
@@ -22,20 +22,19 @@ public sealed record DeleteConfigCommand : ICommand
         {
             await store.DeleteAsync(Namespace, Key, ct);
 
-            // Only create audit events on the leader to avoid duplicates during log replay
-            if (isLeader)
+            // Create audit on all nodes - storage handles idempotency via upsert
+            const string action = "config.deleted";
+            await store.AppendAuditAsync(new AuditEvent
             {
-                await store.AppendAuditAsync(new AuditEvent
-                {
-                    Timestamp = Timestamp,
-                    Action = "config.deleted",
-                    Actor = Author,
-                    Namespace = Namespace,
-                    Key = Key,
-                    OldValue = existing.Value,
-                    NewValue = null
-                }, ct);
-            }
+                Id = AuditIdGenerator.Generate(Timestamp, Namespace, Key, action),
+                Timestamp = Timestamp,
+                Action = action,
+                Actor = Author,
+                Namespace = Namespace,
+                Key = Key,
+                OldValue = existing.Value,
+                NewValue = null
+            }, ct);
         }
     }
 }

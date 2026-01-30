@@ -1,3 +1,4 @@
+using Confman.Api.Cluster;
 using Confman.Api.Models;
 
 namespace Confman.Api.Storage;
@@ -21,7 +22,12 @@ public interface IConfigStore
     Task SetNamespaceAsync(Namespace ns, CancellationToken ct = default);
     Task DeleteNamespaceAsync(string path, CancellationToken ct = default);
 
-    // Audit operations
+    // Audit operations (uses upsert for idempotency during log replay)
     Task AppendAuditAsync(AuditEvent evt, CancellationToken ct = default);
     Task<IReadOnlyList<AuditEvent>> GetAuditEventsAsync(string ns, int limit = 50, CancellationToken ct = default);
+
+    // Bulk operations for snapshots
+    Task<List<ConfigEntry>> GetAllConfigsAsync(CancellationToken ct = default);
+    Task<List<AuditEvent>> GetAllAuditEventsAsync(CancellationToken ct = default);
+    Task RestoreFromSnapshotAsync(SnapshotData snapshot, CancellationToken ct = default);
 }

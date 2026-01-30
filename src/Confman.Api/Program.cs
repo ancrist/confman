@@ -5,7 +5,6 @@ using Confman.Api.Middleware;
 using Confman.Api.Storage;
 using DotNext.Net.Cluster.Consensus.Raft;
 using DotNext.Net.Cluster.Consensus.Raft.Http;
-using DotNext.Net.Cluster.Consensus.Raft.StateMachine;
 using Microsoft.AspNetCore.Connections;
 using Serilog;
 
@@ -38,7 +37,7 @@ try
         .Enrich.FromLogContext()
         .Enrich.WithProperty("Application", "Confman")
         .WriteTo.Console(outputTemplate:
-            "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}"));
+            "[{Timestamp:yyyy-MM-ddTHH:mm:ss.fffZ} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}"));
 
     // Register storage
     builder.Services.AddSingleton<IConfigStore, LiteDbConfigStore>();

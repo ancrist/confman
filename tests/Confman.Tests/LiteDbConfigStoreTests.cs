@@ -1,5 +1,8 @@
+using Confman.Api.Cluster;
+using Confman.Api.Cluster.Commands;
 using Confman.Api.Models;
 using Confman.Api.Storage;
+using LiteDB;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -260,6 +263,157 @@ public class LiteDbConfigStoreTests : IDisposable
         var events = await _store.GetAuditEventsAsync("ns", limit: 3);
 
         Assert.Equal(3, events.Count);
+    }
+
+    [Fact]
+    public async Task AppendAuditAsync_UpsertPreventsduplicates()
+    {
+        // Same ID should result in upsert (no duplicates)
+        var id = ObjectId.NewObjectId();
+        var evt1 = new AuditEvent
+        {
+            Id = id,
+            Timestamp = DateTimeOffset.UtcNow,
+            Action = "config.created",
+            Actor = "user",
+            Namespace = "ns",
+            Key = "key",
+            NewValue = "value1"
+        };
+
+        var evt2 = new AuditEvent
+        {
+            Id = id, // Same ID
+            Timestamp = DateTimeOffset.UtcNow,
+            Action = "config.created",
+            Actor = "user",
+            Namespace = "ns",
+            Key = "key",
+            NewValue = "value2" // Different value
+        };
+
+        await _store.AppendAuditAsync(evt1);
+        await _store.AppendAuditAsync(evt2);
+
+        var events = await _store.GetAuditEventsAsync("ns");
+        Assert.Single(events); // Only one event due to upsert
+        Assert.Equal("value2", events[0].NewValue); // Second value wins
+    }
+
+    #endregion
+
+    #region Snapshot Operations
+
+    [Fact]
+    public async Task GetAllConfigsAsync_ReturnsAllConfigs()
+    {
+        await _store.SetAsync(new ConfigEntry { Namespace = "ns1", Key = "key1", Value = "v1", UpdatedBy = "u" });
+        await _store.SetAsync(new ConfigEntry { Namespace = "ns2", Key = "key2", Value = "v2", UpdatedBy = "u" });
+
+        var configs = await _store.GetAllConfigsAsync();
+
+        Assert.Equal(2, configs.Count);
+    }
+
+    [Fact]
+    public async Task GetAllAuditEventsAsync_ReturnsAllAuditEvents()
+    {
+        await _store.AppendAuditAsync(new AuditEvent { Timestamp = DateTimeOffset.UtcNow, Action = "a1", Actor = "u", Namespace = "ns1" });
+        await _store.AppendAuditAsync(new AuditEvent { Timestamp = DateTimeOffset.UtcNow, Action = "a2", Actor = "u", Namespace = "ns2" });
+
+        var events = await _store.GetAllAuditEventsAsync();
+
+        Assert.Equal(2, events.Count);
+    }
+
+    [Fact]
+    public async Task RestoreFromSnapshotAsync_ClearsAndRestoresData()
+    {
+        // Create existing data
+        await _store.SetAsync(new ConfigEntry { Namespace = "old", Key = "key", Value = "old-value", UpdatedBy = "u" });
+        await _store.SetNamespaceAsync(new Namespace { Path = "old-ns", Owner = "u" });
+        await _store.AppendAuditAsync(new AuditEvent { Timestamp = DateTimeOffset.UtcNow, Action = "old-action", Actor = "u", Namespace = "old" });
+
+        // Create snapshot data
+        var snapshot = new SnapshotData
+        {
+            Version = 1,
+            Timestamp = DateTimeOffset.UtcNow,
+            Configs =
+            [
+                new ConfigEntry { Namespace = "new", Key = "key1", Value = "v1", Version = 1, UpdatedBy = "u" },
+                new ConfigEntry { Namespace = "new", Key = "key2", Value = "v2", Version = 1, UpdatedBy = "u" }
+            ],
+            Namespaces =
+            [
+                new Namespace { Path = "new-ns", Owner = "owner" }
+            ],
+            AuditEvents =
+            [
+                new AuditEvent { Timestamp = DateTimeOffset.UtcNow, Action = "new-action", Actor = "u", Namespace = "new" }
+            ]
+        };
+
+        // Restore
+        await _store.RestoreFromSnapshotAsync(snapshot);
+
+        // Verify old data is gone
+        Assert.Null(await _store.GetAsync("old", "key"));
+        Assert.Null(await _store.GetNamespaceAsync("old-ns"));
+        Assert.Empty(await _store.GetAuditEventsAsync("old"));
+
+        // Verify new data exists
+        var configs = await _store.GetAllConfigsAsync();
+        Assert.Equal(2, configs.Count);
+
+        var namespaces = await _store.ListNamespacesAsync();
+        Assert.Single(namespaces);
+        Assert.Equal("new-ns", namespaces[0].Path);
+
+        var events = await _store.GetAuditEventsAsync("new");
+        Assert.Single(events);
+        Assert.Equal("new-action", events[0].Action);
+    }
+
+    #endregion
+
+    #region AuditIdGenerator
+
+    [Fact]
+    public void AuditIdGenerator_ProducesDeterministicIds()
+    {
+        var timestamp = DateTimeOffset.Parse("2026-01-26T10:00:00Z");
+
+        var id1 = AuditIdGenerator.Generate(timestamp, "ns", "key", "config.created");
+        var id2 = AuditIdGenerator.Generate(timestamp, "ns", "key", "config.created");
+
+        Assert.Equal(id1, id2); // Same inputs = same ID
+    }
+
+    [Fact]
+    public void AuditIdGenerator_IgnoresActionForIdempotency()
+    {
+        // Action is NOT included in the ID - this ensures replays are idempotent
+        // even when action changes from "created" to "updated"
+        var timestamp = DateTimeOffset.Parse("2026-01-26T10:00:00Z");
+
+        var id1 = AuditIdGenerator.Generate(timestamp, "ns", "key", "config.created");
+        var id2 = AuditIdGenerator.Generate(timestamp, "ns", "key", "config.updated");
+
+        Assert.Equal(id1, id2); // Same ID despite different action
+    }
+
+    [Fact]
+    public void AuditIdGenerator_ProducesDifferentIdsForDifferentInputs()
+    {
+        var timestamp = DateTimeOffset.Parse("2026-01-26T10:00:00Z");
+
+        var id1 = AuditIdGenerator.Generate(timestamp, "ns", "key1", "config.created");
+        var id2 = AuditIdGenerator.Generate(timestamp, "ns", "key2", "config.created");
+        var id3 = AuditIdGenerator.Generate(timestamp.AddSeconds(1), "ns", "key1", "config.created");
+
+        Assert.NotEqual(id1, id2); // Different key
+        Assert.NotEqual(id1, id3); // Different timestamp
     }
 
     #endregion
