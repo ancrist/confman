@@ -37,7 +37,7 @@ try
         .Enrich.FromLogContext()
         .Enrich.WithProperty("Application", "Confman")
         .WriteTo.Console(outputTemplate:
-            "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}"));
+            "[{Timestamp:yyyy-MM-ddTHH:mm:ss.fffZ} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}"));
 
     // Register storage
     builder.Services.AddSingleton<IConfigStore, LiteDbConfigStore>();
