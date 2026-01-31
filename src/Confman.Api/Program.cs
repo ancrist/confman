@@ -151,8 +151,6 @@ try
     app.UseSwagger();
     app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Confman API v1"));
 
-    app.UseHttpsRedirection();
-
     // Authentication and Authorization
     app.UseAuthentication();
     app.UseAuthorization();
