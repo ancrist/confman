@@ -143,24 +143,28 @@ Each node requires its own config file specifying its endpoint and cluster membe
 |---------|-------------|
 | `publicEndPoint` | This node's advertised address for cluster communication |
 | `members` | Static list of all cluster member endpoints |
-| `coldStart` | Set `true` only for first node when bootstrapping a new cluster |
+| `coldStart` | Must be `false` when members are pre-configured. Only use `true` for dynamic membership without a `members` list |
 | `lowerElectionTimeout` / `upperElectionTimeout` | Raft election timeout range in milliseconds |
 
 ### Running a 3-Node Cluster
 
+All nodes use `coldStart: false` with pre-configured members. Start at least 2 nodes to form a quorum and elect a leader.
+
 ```bash
 # Terminal 1 - Node 1 (port 6100)
-dotnet run --project src/Confman.Api -- --urls=http://127.0.0.1:6100 \
-  --config appsettings.node1.json
+ASPNETCORE_ENVIRONMENT=node1 dotnet run --no-launch-profile --project src/Confman.Api \
+  --urls http://127.0.0.1:6100
 
 # Terminal 2 - Node 2 (port 6200)
-dotnet run --project src/Confman.Api -- --urls=http://127.0.0.1:6200 \
-  --config appsettings.node2.json
+ASPNETCORE_ENVIRONMENT=node2 dotnet run --no-launch-profile --project src/Confman.Api \
+  --urls http://127.0.0.1:6200
 
 # Terminal 3 - Node 3 (port 6300)
-dotnet run --project src/Confman.Api -- --urls=http://127.0.0.1:6300 \
-  --config appsettings.node3.json
+ASPNETCORE_ENVIRONMENT=node3 dotnet run --no-launch-profile --project src/Confman.Api \
+  --urls http://127.0.0.1:6300
 ```
+
+> **Note:** Do NOT pass `--coldStart true` on the command line. With pre-configured `members`, cold start is unnecessary and causes leader tracking failures after re-election. See [DotNext Raft docs](https://dotnet.github.io/dotNext/features/cluster/raft.html).
 
 ## Dashboard
 
