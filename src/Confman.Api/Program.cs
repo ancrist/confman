@@ -155,6 +155,9 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
 
+    // Read barrier for linearizable reads (after auth to prevent unauthenticated DoS)
+    app.UseReadBarrier();
+
     // Health endpoints (no auth required)
     app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTimeOffset.UtcNow }))
         .AllowAnonymous();
