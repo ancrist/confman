@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raft Consensus in Confman</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Helvetica Neue',Helvetica,'Segoe UI',system-ui,sans-serif;background:#f5f5f0;color:#1a1a1a;height:100vh;overflow:hidden}
+  .app{display:flex;height:100vh}
+  ::-webkit-scrollbar{width:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#d4d4d0;border-radius:2px}
+  ::-webkit-scrollbar-thumb:hover{background:#b0b0a8}
+
+  /* Sidebar */
+  .sidebar{width:272px;min-width:272px;background:#ffffff;border-right:1px solid #d4d4d0;display:flex;flex-direction:column;overflow-y:auto}
+  .sidebar-header{padding:24px 24px 20px;border-bottom:1px solid #d4d4d0}
+  .sidebar-header h1{font-size:15px;font-weight:700;color:#1a1a1a;letter-spacing:0.08em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+  .sidebar-header h1::before{content:'';display:inline-block;width:12px;height:12px;background:#c94444;flex-shrink:0}
+  .sidebar-header .sub{font-size:11px;color:#888880;margin-top:6px;letter-spacing:0.01em;padding-left:20px}
+  .ctrl-group{padding:20px 24px;border-bottom:1px solid #e8e8e4}
+  .ctrl-group h3{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.6px;color:#999990;margin-bottom:12px}
+
+  .scene-btn{display:block;width:100%;text-align:left;padding:10px 12px;font-size:12px;font-weight:500;background:#fafaf8;border:1px solid #e0e0dc;border-left:3px solid #e0e0dc;border-radius:3px;color:#555550;cursor:pointer;margin-bottom:6px;transition:all .15s;letter-spacing:0.01em}
+  .scene-btn:hover{background:#f0f0ec;color:#1a1a1a;border-color:#c8c8c4;border-left-color:#1a1a1a}
+  .scene-btn.active{background:#1a1a1a;border-color:#1a1a1a;border-left-color:#c94444;color:#ffffff}
+  .scene-btn .scene-sub{display:block;font-size:10px;color:#999990;margin-top:3px;font-weight:400}
+  .scene-btn.active .scene-sub{color:#888888}
+
+  .transport{display:flex;gap:4px;margin-bottom:16px}
+  .transport button{flex:1;padding:8px 0;font-size:11px;font-weight:600;background:#fafaf8;border:1px solid #d4d4d0;border-radius:3px;color:#555550;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:0.5px}
+  .transport button:hover{background:#f0f0ec;color:#1a1a1a}
+  .transport button.playing{background:#1a1a1a;border-color:#1a1a1a;color:#ffffff}
+
+  .speed-row{display:flex;align-items:center;gap:12px;font-size:10px;color:#888880;text-transform:uppercase;letter-spacing:0.8px}
+  .speed-row input[type=range]{flex:1;accent-color:#1a1a1a;cursor:pointer;height:2px}
+  .speed-val{min-width:32px;text-align:right;font-family:'SF Mono','Fira Code','Consolas',monospace;font-size:10px;color:#1a1a1a;font-weight:600}
+
+  .step-indicator{font-size:10px;color:#888880;margin-top:16px;text-align:center;font-family:'SF Mono','Fira Code','Consolas',monospace;letter-spacing:0.5px;padding-top:12px;border-top:1px solid #e8e8e4}
+
+  .state-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:11px}
+  .state-label{color:#999990;text-align:right;text-transform:uppercase;font-size:9px;letter-spacing:0.8px;font-weight:600;padding-top:1px}
+  .state-val{color:#1a1a1a;font-family:'SF Mono','Fira Code','Consolas',monospace;font-size:11px}
+  .state-val.leader{color:#2d8a5e;font-weight:700}
+  .state-val.term{color:#b8860b}
+
+  /* Main */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+  .canvas-wrapper{flex:1;min-height:0;position:relative;background:#f5f5f0;overflow:hidden}
+  #canvas{width:100%;height:100%;display:block}
+
+  .explainer{padding:16px 24px;background:#ffffff;border-top:1px solid #d4d4d0;min-height:80px;border-left:3px solid #1a1a1a}
+  .explainer-step{font-size:9px;color:#999990;text-transform:uppercase;letter-spacing:1.6px;margin-bottom:6px;font-weight:700}
+  .explainer-desc{font-size:14px;font-weight:700;color:#1a1a1a;line-height:1.5;letter-spacing:-0.01em}
+  .explainer-detail{font-size:12px;color:#555550;margin-top:6px;line-height:1.6}
+  .explainer-ref{font-size:10px;color:#999990;font-family:'SF Mono','Fira Code','Consolas',monospace;margin-top:8px;padding-top:6px;border-top:1px solid #f0f0ec}
+
+  .event-log-wrapper{background:#fafaf8;border-top:1px solid #e8e8e4}
+  .event-log-header{padding:8px 24px 0;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.6px;color:#999990;font-family:'Helvetica Neue',Helvetica,sans-serif}
+  .event-log{height:80px;overflow-y:auto;padding:6px 24px 8px;background:transparent;font-size:10px;font-family:'SF Mono','Fira Code','Consolas',monospace}
+  .event-entry{padding:3px 0;color:#666660;border-bottom:1px solid #f0f0ec}
+  .event-entry .ev-time{color:#999990;margin-right:10px;font-weight:600}
+  .event-entry .ev-msg-type{font-weight:600;margin-right:4px}
+  .ev-request{color:#4a7ab5}.ev-raft{color:#2d8a5e}.ev-mutation{color:#b8860b}.ev-response{color:#2d8a5e}.ev-error{color:#c94444}
+
+  .prompt-panel{height:88px;background:#ffffff;border-top:1px solid #d4d4d0;display:flex;flex-direction:column}
+  .prompt-header{display:flex;justify-content:space-between;align-items:center;padding:8px 24px;border-bottom:1px solid #e8e8e4}
+  .prompt-header span{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.6px;color:#999990}
+  #copyBtn{padding:4px 16px;font-size:10px;font-weight:600;background:#1a1a1a;border:1px solid #1a1a1a;border-radius:3px;color:#ffffff;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:0.5px}
+  #copyBtn:hover{background:#333330}
+  #copyBtn.copied{background:#2d8a5e;border-color:#2d8a5e;color:#ffffff}
+  #promptText{flex:1;padding:10px 24px;font-family:'SF Mono','Fira Code','Consolas',monospace;font-size:10px;line-height:1.6;color:#666660;overflow-y:auto;white-space:pre-wrap}
+
+  /* SVG */
+  .conn-line{stroke:#d4d4d0;stroke-width:1;stroke-dasharray:4,4;fill:none}
+  .conn-line.active{stroke:#b0b0a8;stroke-width:1.5}
+  .node-body{transition:fill .3s,stroke .3s}
+  .node-label{font-family:'Helvetica Neue',Helvetica,sans-serif;font-weight:700;fill:#1a1a1a;text-anchor:start;font-size:15px;pointer-events:none;letter-spacing:-0.02em}
+  .node-port{font-family:'SF Mono','Fira Code','Consolas',monospace;fill:#b0b0a8;text-anchor:start;font-size:8px;pointer-events:none;letter-spacing:0.5px}
+  .node-role{font-family:'Helvetica Neue',Helvetica,sans-serif;font-weight:700;text-anchor:start;font-size:8px;text-transform:uppercase;letter-spacing:1.2px;pointer-events:none}
+  .node-term{font-family:'SF Mono','Fira Code','Consolas',monospace;text-anchor:end;font-size:8px;fill:#b8860b;pointer-events:none;letter-spacing:0.5px}
+  .msg-circle{pointer-events:none}
+  .msg-label{font-family:'SF Mono','Fira Code','Consolas',monospace;font-size:8px;font-weight:600;pointer-events:none;text-anchor:middle;letter-spacing:0.3px}
+  .log-entry-rect{transition:fill .3s}
+  .client-icon{font-family:'Helvetica Neue',Helvetica,sans-serif;font-weight:700;fill:#1a1a1a;text-anchor:middle;font-size:9px;pointer-events:none;text-transform:uppercase;letter-spacing:1px}
+  .partition-line{stroke:#c94444;stroke-width:1.5;stroke-dasharray:6,4;opacity:0;transition:opacity .5s}
+  .partition-line.visible{opacity:.6}
+
+  @keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}
+  .leader-ring{animation:pulse 2.5s ease-in-out infinite}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>Raft Consensus</h1>
+      <div class="sub">Confman distributed config service</div>
+    </div>
+    <div class="ctrl-group"><h3>Scenarios</h3><div id="sceneList"></div></div>
+    <div class="ctrl-group">
+      <h3>Animation</h3>
+      <div class="transport" id="transport"></div>
+      <div class="speed-row"><span>Speed</span><input type="range" id="speedSlider" min="0.25" max="3" step="0.25" value="1"><span class="speed-val" id="speedVal">1x</span></div>
+      <div class="step-indicator" id="stepIndicator">Step 0 / 0</div>
+    </div>
+    <div class="ctrl-group" style="flex:1">
+      <h3>Cluster State</h3>
+      <div class="state-grid" id="stateGrid"></div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="canvas-wrapper">
+      <svg id="canvas" viewBox="0 0 780 400" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="shadow-subtle"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000000" flood-opacity=".06"/></filter>
+          <pattern id="dotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+            <circle cx="12" cy="12" r="0.6" fill="#c8c8c0"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#dotGrid)"/>
+        <g id="legendLayer"></g>
+        <g id="connLayer"></g>
+        <g id="partitionLayer"></g>
+        <g id="logLayer"></g>
+        <g id="nodeLayer"></g>
+        <g id="msgLayer"></g>
+        <g id="clientLayer"></g>
+      </svg>
+    </div>
+    <div class="explainer" id="explainer">
+      <div class="explainer-step" id="expStep"></div>
+      <div class="explainer-desc" id="expDesc">Select a scenario to begin</div>
+      <div class="explainer-detail" id="expDetail"></div>
+      <div class="explainer-ref" id="expRef"></div>
+    </div>
+    <div class="event-log-wrapper"><div class="event-log-header">Event Log</div><div class="event-log" id="eventLog"></div></div>
+    <div class="prompt-panel">
+      <div class="prompt-header"><span>Learning Prompt</span><button id="copyBtn">Copy</button></div>
+      <pre id="promptText"></pre>
+    </div>
+  </main>
+</div>
+
+<script>
+// ─── Constants ────────────────────────────────────────
+
+var NW = 120; // node width
+var NH = 72;  // node height
+var NR_RADIUS = 4; // corner radius
+var MSG_DUR = 450; // message travel time (ms)
+var COLORS = {
+  follower:  { fill:'#ffffff',  stroke:'#4a7ab5', accent:'#4a7ab5', role:'#4a7ab5', bg:'rgba(74,122,181,0.06)' },
+  candidate: { fill:'#ffffff',  stroke:'#b8860b', accent:'#b8860b', role:'#b8860b', bg:'rgba(184,134,11,0.06)' },
+  leader:    { fill:'#ffffff',  stroke:'#2d8a5e', accent:'#2d8a5e', role:'#2d8a5e', bg:'rgba(45,138,94,0.06)' },
+  dead:      { fill:'#f5f5f0',  stroke:'#b0b0a8', accent:'#999990', role:'#999990', bg:'rgba(0,0,0,0.02)' },
+};
+var MSG_COLORS = {
+  'RequestVote':'#b8860b','VoteGranted':'#2d8a5e','Heartbeat':'#4a7ab5',
+  'AppendEntries':'#7a6ab5','ACK':'#2d8a5e','ClientPUT':'#c45c8a',
+  'Redirect307':'#c94444','Response200':'#2d8a5e','ReadBarrier':'#3a8a8a',
+  'CommitIdx':'#3a8a8a','ClientGET':'#c45c8a',
+};
+
+var nodePos = [
+  { x:350, y:70,  label:'Node A', port:'6100' },
+  { x:130, y:290, label:'Node B', port:'6200' },
+  { x:570, y:290, label:'Node C', port:'6300' },
+];
+var clientPos = { x:650, y:70 };
+
+// ─── State ────────────────────────────────────────────
+
+var state = {
+  scene: null,
+  stepIdx: -1,
+  playing: false,
+  speed: 1,
+  nodes: [],
+  messages: [],
+  events: [],
+  showClient: false,
+  showPartition: false,
+  partitionSide: [],
+  explored: {},
+  playTimer: null,
+};
+
+function resetNodes() {
+  state.nodes = [
+    { state:'follower', term:0, log:[], commitIdx:0, alive:true },
+    { state:'follower', term:0, log:[], commitIdx:0, alive:true },
+    { state:'follower', term:0, log:[], commitIdx:0, alive:true },
+  ];
+  state.messages = [];
+  state.events = [];
+  state.showClient = false;
+  state.showPartition = false;
+}
+
+// ─── Scenes ───────────────────────────────────────────
+
+var scenes = {
+  election: {
+    title:'Leader Election',
+    sub:'How a leader is chosen when the cluster starts',
+    init: function(){ resetNodes(); },
+    steps: [
+      { desc:'All nodes start as Followers',
+        detail:'Each Confman node begins in Follower state. DotNext assigns a random election timeout between 1000-2000ms to prevent simultaneous elections.',
+        ref:'appsettings.json \u2014 lowerElectionTimeout: 1000, upperElectionTimeout: 2000',
+        apply:function(){}, messages:[], duration:1200 },
+      { desc:'Node B\'s election timeout expires first (1200ms)',
+        detail:'Node B drew the shortest random timeout. With no heartbeats received from a leader, B transitions to Candidate and increments its term to 1.',
+        ref:'DotNext.Net.Cluster \u2014 Raft election trigger',
+        apply:function(){ state.nodes[1].state='candidate'; state.nodes[1].term=1; },
+        messages:[], duration:800 },
+      { desc:'Candidate B sends RequestVote RPCs',
+        detail:'Node B requests votes from all other nodes. The RPC includes B\'s current term (1) and its last log index so voters can check if B\'s log is up-to-date.',
+        ref:'Raft paper \u00a75.2 \u2014 RequestVote RPC',
+        apply:function(){},
+        messages:[{from:1,to:0,type:'RequestVote'},{from:1,to:2,type:'RequestVote'}], duration:600 },
+      { desc:'Nodes A and C grant their votes',
+        detail:'Both A and C are in term 0 and haven\'t voted yet this term. They grant their vote to B and reset their election timers. Each node can only vote once per term.',
+        ref:'Raft paper \u00a75.2 \u2014 Vote granting rules',
+        apply:function(){ state.nodes[0].term=1; state.nodes[2].term=1; },
+        messages:[{from:0,to:1,type:'VoteGranted'},{from:2,to:1,type:'VoteGranted'}], duration:600 },
+      { desc:'Node B wins the election \u2014 becomes Leader',
+        detail:'B received 3/3 votes (including its self-vote). Only 2/3 (majority) needed for quorum. B transitions to Leader for term 1.',
+        ref:'Raft paper \u00a75.2 \u2014 Majority vote wins',
+        apply:function(){ state.nodes[1].state='leader'; },
+        messages:[], duration:800 },
+      { desc:'Leader B sends initial heartbeats',
+        detail:'The new leader immediately sends empty AppendEntries RPCs (heartbeats) to all followers to establish authority and prevent new elections. Interval: ~700ms (heartbeatThreshold: 0.5).',
+        ref:'appsettings.json \u2014 heartbeatThreshold: 0.5',
+        apply:function(){},
+        messages:[{from:1,to:0,type:'Heartbeat'},{from:1,to:2,type:'Heartbeat'}], duration:800 },
+      { desc:'Cluster is operational \u2014 ready for requests',
+        detail:'The cluster now has a stable leader. Write requests go to the leader; reads can go to any node (with read barrier for linearizability). Leader will continue heartbeating every ~700ms.',
+        ref:'Cluster/RaftService.cs \u2014 IsLeader, LeaderUri properties',
+        apply:function(){}, messages:[], duration:0 },
+    ],
+  },
+
+  replication: {
+    title:'Log Replication',
+    sub:'Write path: how a config change reaches all nodes',
+    init: function(){
+      resetNodes();
+      state.nodes[1].state='leader'; state.nodes[1].term=1;
+      state.nodes[0].term=1; state.nodes[2].term=1;
+      state.showClient=true;
+    },
+    steps: [
+      { desc:'Cluster is running \u2014 Node B is Leader (term 1)',
+        detail:'The cluster has an established leader. A client wants to write a config value: PUT /api/v1/namespaces/prod/config/timeout with value "5000".',
+        ref:'Controllers/ConfigController.cs \u2014 Set endpoint',
+        apply:function(){}, messages:[], duration:1000 },
+      { desc:'Client sends PUT to Node A (a Follower)',
+        detail:'The client doesn\'t know which node is the leader. It sends the PUT request to Node A.',
+        ref:'ConfigController.Set() \u2014 line 92',
+        apply:function(){},
+        messages:[{from:'client',to:0,type:'ClientPUT'}], duration:700 },
+      { desc:'Node A returns HTTP 307 Redirect to Leader B',
+        detail:'Node A checks _raft.IsLeader (false) and returns 307 Temporary Redirect with Location header pointing to Node B. The 307 preserves the PUT method.',
+        ref:'ConfigController.ForwardToLeaderAsync() \u2014 HTTP 307',
+        apply:function(){},
+        messages:[{from:0,to:'client',type:'Redirect307'}], duration:700 },
+      { desc:'Client follows redirect \u2014 sends PUT to Leader B',
+        detail:'The client automatically follows the redirect and sends the same PUT request to Node B (the leader).',
+        ref:'HTTP 307 Temporary Redirect \u2014 method preserved',
+        apply:function(){},
+        messages:[{from:'client',to:1,type:'ClientPUT'}], duration:700 },
+      { desc:'Leader B appends entry to local WAL',
+        detail:'RaftService.ReplicateAsync() serializes the SetConfigCommand to JSON, wraps it in a BinaryLogEntry with the current term (1), and appends to the Write-Ahead Log.',
+        ref:'Cluster/RaftService.cs:78-91 \u2014 ReplicateAsync()',
+        apply:function(){ state.nodes[1].log.push({term:1,committed:false}); },
+        messages:[], duration:800 },
+      { desc:'Leader B sends AppendEntries to followers',
+        detail:'Leader B replicates the new log entry to followers A and C via AppendEntries RPCs. The RPC includes the entry data, leader\'s term, and commit index. Timeout: 10 seconds.',
+        ref:'DotNext.Net.Cluster \u2014 AppendEntries RPC',
+        apply:function(){},
+        messages:[{from:1,to:0,type:'AppendEntries'},{from:1,to:2,type:'AppendEntries'}], duration:700 },
+      { desc:'Followers append to their logs and acknowledge',
+        detail:'Nodes A and C each append the entry to their local WAL and send acknowledgment back to the leader.',
+        ref:'DotNext.Net.Cluster \u2014 Follower log append',
+        apply:function(){ state.nodes[0].log.push({term:1,committed:false}); state.nodes[2].log.push({term:1,committed:false}); },
+        messages:[{from:0,to:1,type:'ACK'},{from:2,to:1,type:'ACK'}], duration:700 },
+      { desc:'Quorum reached \u2014 entry committed on all nodes',
+        detail:'Leader B received ACKs from 3/3 nodes (2/3 majority required). The entry is now committed. On the next heartbeat, followers learn the new commit index and apply.',
+        ref:'Raft paper \u00a75.3 \u2014 Commitment rules',
+        apply:function(){
+          state.nodes.forEach(function(n){ if(n.log.length) n.log[n.log.length-1].committed=true; n.commitIdx=1; });
+        }, messages:[], duration:800 },
+      { desc:'ConfigStateMachine.ApplyAsync() runs on ALL nodes',
+        detail:'Each node\'s state machine deserializes the SetConfigCommand and calls command.ApplyAsync(store). This updates LiteDB and creates an audit event with a deterministic ID (for idempotency during log replay).',
+        ref:'Cluster/ConfigStateMachine.cs:41-64 \u2014 ApplyAsync()',
+        apply:function(){}, messages:[], duration:800 },
+      { desc:'Leader B responds to client with 200 OK',
+        detail:'The write is complete. Leader B returns the updated ConfigEntry to the client. The value is now consistent across all nodes.',
+        ref:'Controllers/ConfigController.cs \u2014 return Ok(entry)',
+        apply:function(){},
+        messages:[{from:1,to:'client',type:'Response200'}], duration:0 },
+    ],
+  },
+
+  readpath: {
+    title:'Read Path',
+    sub:'Linearizable reads via the read barrier',
+    init: function(){
+      resetNodes();
+      state.nodes[1].state='leader'; state.nodes[1].term=1;
+      state.nodes.forEach(function(n){ n.term=1; n.log=[{term:1,committed:true}]; n.commitIdx=1; });
+      state.showClient=true;
+    },
+    steps: [
+      { desc:'Client sends GET to Node C (a Follower)',
+        detail:'The client sends GET /api/v1/namespaces/prod/config/timeout to Node C. Unlike writes, reads can go to any node \u2014 they don\'t need to hit the leader.',
+        ref:'Middleware/ReadBarrierMiddleware.cs \u2014 InvokeAsync()',
+        apply:function(){},
+        messages:[{from:'client',to:2,type:'ClientGET'}], duration:700 },
+      { desc:'ReadBarrierMiddleware activates',
+        detail:'The middleware detects a GET request to /api/* and calls cluster.ApplyReadBarrierAsync() with a 5-second timeout. This ensures Node C\'s state machine is caught up.',
+        ref:'ReadBarrierMiddleware.cs:65 \u2014 ApplyReadBarrierAsync()',
+        apply:function(){},
+        messages:[], duration:800 },
+      { desc:'Node C contacts Leader B for latest commit index',
+        detail:'The read barrier asks the leader: "What is your latest committed index?" This is needed because C might have uncommitted entries or be behind.',
+        ref:'DotNext ReadBarrier \u2014 leader round-trip',
+        apply:function(){},
+        messages:[{from:2,to:1,type:'ReadBarrier'}], duration:600 },
+      { desc:'Leader B responds with commit index',
+        detail:'Leader B responds with its current commit index (1). Node C now knows it needs to have applied all entries up to index 1 before serving the read.',
+        ref:'Raft paper \u00a76.4 \u2014 Linearizable reads',
+        apply:function(){},
+        messages:[{from:1,to:2,type:'CommitIdx'}], duration:600 },
+      { desc:'Node C verifies local state is caught up',
+        detail:'Node C checks: has my state machine applied up to index 1? Yes \u2014 the barrier succeeds. If C were behind, it would wait (up to 5s) for the state machine to catch up.',
+        ref:'ReadBarrierMiddleware.cs:114 \u2014 FailureMode: reject/stale/timeout',
+        apply:function(){}, messages:[], duration:800 },
+      { desc:'Node C reads from local LiteDB',
+        detail:'With the barrier passed, Node C reads directly from its local LiteDB store. No network call needed \u2014 the data is guaranteed to be consistent as of the barrier point.',
+        ref:'Storage/LiteDbConfigStore.cs \u2014 GetAsync()',
+        apply:function(){}, messages:[], duration:700 },
+      { desc:'Node C responds to client with 200 OK',
+        detail:'The read is complete. The client receives the config value. Thanks to the read barrier, this is a linearizable read \u2014 it reflects all writes committed before the barrier.',
+        ref:'Controllers/ConfigController.cs \u2014 return Ok(entry)',
+        apply:function(){},
+        messages:[{from:2,to:'client',type:'Response200'}], duration:0 },
+    ],
+  },
+
+  failure: {
+    title:'Leader Failure',
+    sub:'What happens when the leader node crashes',
+    init: function(){
+      resetNodes();
+      state.nodes[1].state='leader'; state.nodes[1].term=1;
+      state.nodes.forEach(function(n){ n.term=1; n.log=[{term:1,committed:true}]; n.commitIdx=1; });
+    },
+    steps: [
+      { desc:'Normal operation \u2014 Leader B heartbeating',
+        detail:'The cluster is running normally. Leader B sends heartbeats every ~700ms to followers A and C.',
+        ref:'appsettings.json \u2014 heartbeatThreshold: 0.5',
+        apply:function(){},
+        messages:[{from:1,to:0,type:'Heartbeat'},{from:1,to:2,type:'Heartbeat'}], duration:1000 },
+      { desc:'Leader B crashes',
+        detail:'Node B (port 6200) crashes unexpectedly. It stops sending heartbeats. The Raft cluster must detect the failure and elect a new leader.',
+        ref:'Cluster failure scenario',
+        apply:function(){ state.nodes[1].state='dead'; state.nodes[1].alive=false; },
+        messages:[], duration:1200 },
+      { desc:'Followers A and C stop receiving heartbeats',
+        detail:'Nodes A and C wait for heartbeats that never arrive. Their election timers are ticking: A has 1400ms remaining, C has 1700ms.',
+        ref:'DotNext \u2014 election timeout detection',
+        apply:function(){}, messages:[], duration:1000 },
+      { desc:'Node A\'s election timeout expires first',
+        detail:'Node A\'s timer (1400ms) expires before C\'s (1700ms). A transitions to Candidate and increments its term to 2.',
+        ref:'Raft paper \u00a75.2 \u2014 Election on timeout',
+        apply:function(){ state.nodes[0].state='candidate'; state.nodes[0].term=2; },
+        messages:[], duration:600 },
+      { desc:'Candidate A sends RequestVote to Node C',
+        detail:'A sends RequestVote to C (and to B, but B is dead and won\'t respond). Only C\'s vote plus A\'s self-vote is needed for 2/3 majority.',
+        ref:'Raft paper \u00a75.2 \u2014 RequestVote RPC',
+        apply:function(){},
+        messages:[{from:0,to:2,type:'RequestVote'}], duration:600 },
+      { desc:'Node C grants vote to A',
+        detail:'C hasn\'t voted in term 2 yet and A\'s log is up-to-date. C grants its vote and updates its own term to 2.',
+        ref:'Raft paper \u00a75.2 \u2014 Vote granting rules',
+        apply:function(){ state.nodes[2].term=2; },
+        messages:[{from:2,to:0,type:'VoteGranted'}], duration:600 },
+      { desc:'Node A wins election \u2014 becomes Leader (term 2)',
+        detail:'A has 2/3 votes (self + C). It transitions to Leader for term 2. The cluster is operational again despite one node being down.',
+        ref:'Raft paper \u00a75.2 \u2014 Majority vote wins',
+        apply:function(){ state.nodes[0].state='leader'; state.nodes[0].term=2; state.nodes[2].term=2; },
+        messages:[], duration:800 },
+      { desc:'New Leader A sends heartbeats to C',
+        detail:'Leader A sends heartbeats to C to maintain authority. B is still down but the cluster is fully operational with 2/3 nodes \u2014 reads and writes continue normally.',
+        ref:'Raft \u2014 cluster tolerates (N-1)/2 failures',
+        apply:function(){},
+        messages:[{from:0,to:2,type:'Heartbeat'}], duration:0 },
+    ],
+  },
+
+  partition: {
+    title:'Network Partition',
+    sub:'Split-brain prevention during network failures',
+    init: function(){
+      resetNodes();
+      state.nodes[1].state='leader'; state.nodes[1].term=1;
+      state.nodes.forEach(function(n){ n.term=1; });
+    },
+    steps: [
+      { desc:'Normal 3-node cluster with Leader B',
+        detail:'All three nodes are connected. Leader B (port 6200) is actively heartbeating to followers A and C.',
+        ref:'Cluster/ClusterLifetime.cs \u2014 OnLeaderChanged',
+        apply:function(){},
+        messages:[{from:1,to:0,type:'Heartbeat'},{from:1,to:2,type:'Heartbeat'}], duration:1000 },
+      { desc:'Network partition \u2014 Node A is isolated',
+        detail:'A network failure separates Node A from Nodes B and C. A can no longer communicate with the rest of the cluster.',
+        ref:'Distributed systems \u2014 network partition scenario',
+        apply:function(){ state.showPartition=true; state.partitionSide=[0]; },
+        messages:[], duration:1200 },
+      { desc:'Majority side (B + C) continues operating',
+        detail:'Leader B still has quorum (2/3 nodes: B + C). It continues accepting writes and heartbeating to C. The cluster is degraded but functional.',
+        ref:'Raft \u2014 majority quorum guarantees',
+        apply:function(){},
+        messages:[{from:1,to:2,type:'Heartbeat'}], duration:1000 },
+      { desc:'Isolated Node A\'s election timeout expires',
+        detail:'Node A stops receiving heartbeats. Its election timeout expires and it transitions to Candidate (term 2). But it cannot reach any other node to request votes.',
+        ref:'DotNext \u2014 election timeout in partition',
+        apply:function(){ state.nodes[0].state='candidate'; state.nodes[0].term=2; },
+        messages:[], duration:1000 },
+      { desc:'Node A cannot get quorum \u2014 stays Candidate',
+        detail:'A keeps incrementing its term and trying elections, but can never get the 2/3 majority it needs. It remains stuck as a Candidate. No split-brain occurs because A cannot commit writes.',
+        ref:'Raft safety \u2014 no quorum = no commits',
+        apply:function(){ state.nodes[0].term=3; },
+        messages:[], duration:1000 },
+      { desc:'Meanwhile: B + C accept a write normally',
+        detail:'A client writes to the B+C partition. Leader B replicates to C, gets 2/3 quorum, and commits. Node A is oblivious.',
+        ref:'Cluster/RaftService.cs \u2014 ReplicateAsync()',
+        apply:function(){
+          state.nodes[1].log.push({term:1,committed:true}); state.nodes[2].log.push({term:1,committed:true});
+          state.nodes[1].commitIdx=1; state.nodes[2].commitIdx=1;
+        }, messages:[{from:1,to:2,type:'AppendEntries'}], duration:1000 },
+      { desc:'Partition heals \u2014 network restored',
+        detail:'The network issue is resolved. Node A can now communicate with B and C again.',
+        ref:'Network recovery',
+        apply:function(){ state.showPartition=false; },
+        messages:[], duration:800 },
+      { desc:'Node A discovers Leader B \u2014 reverts to Follower',
+        detail:'A receives a heartbeat from B. Even though A has a higher term (3), B has a longer committed log. A steps down to Follower, adopts B\'s term, and catches up via log replication.',
+        ref:'Raft paper \u00a75.1 \u2014 term-based leader authority',
+        apply:function(){
+          state.nodes[0].state='follower'; state.nodes[0].term=1;
+          state.nodes[0].log=[{term:1,committed:true}]; state.nodes[0].commitIdx=1;
+        },
+        messages:[{from:1,to:0,type:'Heartbeat'},{from:1,to:0,type:'AppendEntries'}], duration:0 },
+    ],
+  },
+};
+
+// ─── SVG Helpers ──────────────────────────────────────
+
+function svg(tag, attrs) {
+  var el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (var k in attrs) if (attrs.hasOwnProperty(k)) el.setAttribute(k, attrs[k]);
+  return el;
+}
+function el(tag, cls, txt) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (txt !== undefined) e.textContent = txt;
+  return e;
+}
+function clr(parent) { while (parent.firstChild) parent.removeChild(parent.firstChild); }
+
+// ─── Build Static SVG ─────────────────────────────────
+
+function buildSVG() {
+  var connG = document.getElementById('connLayer');
+  // Connection lines between nodes
+  for (var i = 0; i < 3; i++) {
+    for (var j = i+1; j < 3; j++) {
+      connG.appendChild(svg('line', {
+        x1:nodePos[i].x, y1:nodePos[i].y, x2:nodePos[j].x, y2:nodePos[j].y,
+        class:'conn-line', 'data-from':i, 'data-to':j,
+      }));
+    }
+  }
+  // Partition line (vertical, hidden by default)
+  document.getElementById('partitionLayer').appendChild(svg('line', {
+    id:'partLine', x1:260, y1:10, x2:260, y2:390, class:'partition-line',
+  }));
+  // Legend
+  buildLegend();
+}
+
+function buildLegend() {
+  var lg = document.getElementById('legendLayer');
+  var states = [
+    { label:'FOLLOWER', color:'#4a7ab5' },
+    { label:'CANDIDATE', color:'#b8860b' },
+    { label:'LEADER', color:'#2d8a5e' },
+    { label:'OFFLINE', color:'#b0b0a8' },
+  ];
+  var startX = 16, startY = 386;
+  states.forEach(function(s, i) {
+    var x = startX + i * 100;
+    lg.appendChild(svg('rect', { x:x, y:startY, width:10, height:10, rx:1, fill:'#ffffff', stroke:s.color, 'stroke-width':1.5 }));
+    lg.appendChild(svg('rect', { x:x, y:startY+1, width:2, height:8, fill:s.color }));
+    var t = svg('text', { x:x+16, y:startY+9, fill:'#999990', 'font-family':"'Helvetica Neue',Helvetica,sans-serif", 'font-size':'7', 'font-weight':'600', 'letter-spacing':'1', 'text-transform':'uppercase' });
+    t.textContent = s.label;
+    lg.appendChild(t);
+  });
+}
+
+// ─── Render Frame ─────────────────────────────────────
+
+function renderNodes() {
+  var g = document.getElementById('nodeLayer');
+  clr(g);
+  state.nodes.forEach(function(n, i) {
+    var p = nodePos[i];
+    var c = n.alive ? COLORS[n.state] : COLORS.dead;
+    var group = svg('g', {});
+    var rx = p.x - NW/2, ry = p.y - NH/2;
+
+    // Leader outer ring (rectangle)
+    if (n.state === 'leader' && n.alive) {
+      group.appendChild(svg('rect', { x:rx-4, y:ry-4, width:NW+8, height:NH+8, rx:NR_RADIUS+2, fill:'none', stroke:c.stroke, 'stroke-width':1, opacity:.3, class:'leader-ring' }));
+    }
+
+    // Shadow background
+    group.appendChild(svg('rect', { x:rx+1, y:ry+1, width:NW, height:NH, rx:NR_RADIUS, fill:'#00000008' }));
+    // Main body - rounded rectangle
+    group.appendChild(svg('rect', { x:rx, y:ry, width:NW, height:NH, rx:NR_RADIUS, fill:c.fill, stroke:c.stroke, 'stroke-width':1.5, class:'node-body' }));
+    // Left accent bar (vertical stripe)
+    group.appendChild(svg('rect', { x:rx, y:ry+NR_RADIUS, width:3, height:NH-NR_RADIUS*2, fill:c.accent, opacity:n.alive?1:0.3 }));
+
+    // Dead overlay
+    if (!n.alive) {
+      group.appendChild(svg('rect', { x:rx, y:ry, width:NW, height:NH, rx:NR_RADIUS, fill:'#f5f5f0', opacity:0.5 }));
+      var x1 = svg('line', { x1:rx+NW/2-12, y1:ry+NH/2-12, x2:rx+NW/2+12, y2:ry+NH/2+12, stroke:'#c94444', 'stroke-width':2, 'stroke-linecap':'round' });
+      var x2 = svg('line', { x1:rx+NW/2+12, y1:ry+NH/2-12, x2:rx+NW/2-12, y2:ry+NH/2+12, stroke:'#c94444', 'stroke-width':2, 'stroke-linecap':'round' });
+      group.appendChild(x1); group.appendChild(x2);
+    }
+
+    // Label (node name, prominent, top line)
+    var lbl = svg('text', { x:rx+14, y:ry+22, class:'node-label' });
+    lbl.textContent = p.label;
+    group.appendChild(lbl);
+
+    // Port (beside name)
+    var port = svg('text', { x:rx+14, y:ry+36, class:'node-port' });
+    port.textContent = 'PORT ' + p.port;
+    group.appendChild(port);
+
+    // Divider line
+    group.appendChild(svg('line', { x1:rx+14, y1:ry+42, x2:rx+NW-10, y2:ry+42, stroke:'#e8e8e4', 'stroke-width':0.5 }));
+
+    // Role badge (bottom-left)
+    var role = svg('text', { x:rx+14, y:ry+58, class:'node-role', fill:c.role });
+    role.textContent = n.alive ? n.state.toUpperCase() : 'OFFLINE';
+    group.appendChild(role);
+
+    // Term (bottom-right)
+    var term = svg('text', { x:rx+NW-10, y:ry+58, class:'node-term', 'text-anchor':'end' });
+    term.textContent = 'TERM ' + n.term;
+    group.appendChild(term);
+
+    g.appendChild(group);
+  });
+}
+
+function renderLogEntries() {
+  var g = document.getElementById('logLayer');
+  clr(g);
+  state.nodes.forEach(function(n, i) {
+    if (!n.log.length) return;
+    var p = nodePos[i];
+    var w = 16, h = 10, gap = 3;
+    var totalW = n.log.length * (w + gap) - gap;
+    var startX = p.x - totalW / 2;
+    var y = p.y + NH/2 + 10;
+    n.log.forEach(function(entry, ei) {
+      var color = entry.term === 1 ? '#4a7ab5' : '#7a6ab5';
+      g.appendChild(svg('rect', {
+        x: startX + ei * (w + gap), y: y, width: w, height: h, rx: 2,
+        fill: entry.committed ? color : 'transparent',
+        stroke: color, 'stroke-width': 1, class: 'log-entry-rect',
+      }));
+    });
+  });
+}
+
+function renderClient() {
+  var g = document.getElementById('clientLayer');
+  clr(g);
+  if (!state.showClient) return;
+  var p = clientPos;
+  var cw = 72, ch = 32;
+  g.appendChild(svg('rect', { x:p.x-cw/2+1, y:p.y-ch/2+1, width:cw, height:ch, rx:3, fill:'#00000008' }));
+  g.appendChild(svg('rect', { x:p.x-cw/2, y:p.y-ch/2, width:cw, height:ch, rx:3, fill:'#ffffff', stroke:'#c45c8a', 'stroke-width':1 }));
+  g.appendChild(svg('rect', { x:p.x-cw/2, y:p.y-ch/2+3, width:2.5, height:ch-6, fill:'#c45c8a' }));
+  var t = svg('text', { x:p.x, y:p.y+4, class:'client-icon' });
+  t.textContent = 'CLIENT';
+  g.appendChild(t);
+  // Connection lines to all nodes
+  nodePos.forEach(function(np) {
+    g.appendChild(svg('line', { x1:p.x, y1:p.y, x2:np.x, y2:np.y, stroke:'#e0e0dc', 'stroke-width':0.75, 'stroke-dasharray':'3,5' }));
+  });
+}
+
+function renderPartition() {
+  var line = document.getElementById('partLine');
+  line.setAttribute('class', state.showPartition ? 'partition-line visible' : 'partition-line');
+}
+
+function renderMessages() {
+  var g = document.getElementById('msgLayer');
+  clr(g);
+  state.messages.forEach(function(m) {
+    var t = easeOutCubic(m.progress);
+    var x = m.fromX + (m.toX - m.fromX) * t;
+    var y = m.fromY + (m.toY - m.fromY) * t;
+    var color = MSG_COLORS[m.type] || '#1a1a1a';
+    var labelText = m.type;
+    var labelW = labelText.length * 5.2 + 12;
+    var labelH = 14;
+
+    // Pill background
+    g.appendChild(svg('rect', { x:x-labelW/2, y:y-labelH/2, width:labelW, height:labelH, rx:2, fill:'#ffffff', stroke:color, 'stroke-width':1, opacity:.95, class:'msg-circle' }));
+    // Small directional dot
+    g.appendChild(svg('circle', { cx:x-labelW/2+4, cy:y, r:2, fill:color, opacity:.8 }));
+    // Label
+    var lbl = svg('text', { x:x+2, y:y+3.5, fill:color, class:'msg-label' });
+    lbl.textContent = labelText;
+    g.appendChild(lbl);
+  });
+}
+
+function renderFrame() {
+  renderNodes();
+  renderLogEntries();
+  renderClient();
+  renderPartition();
+  renderMessages();
+  updateStatePanel();
+}
+
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+// ─── Animation Engine ─────────────────────────────────
+
+var lastTs = 0;
+var animRunning = false;
+var waitingForMsgs = false;
+
+function startAnimLoop() {
+  if (animRunning) return;
+  animRunning = true;
+  lastTs = performance.now();
+  requestAnimationFrame(animTick);
+}
+
+function animTick(ts) {
+  if (!animRunning) return;
+  var dt = ts - lastTs;
+  lastTs = ts;
+
+  // Update messages
+  var arrived = [];
+  state.messages.forEach(function(m) {
+    m.elapsed += dt * state.speed;
+    m.progress = Math.min(1, m.elapsed / m.duration);
+    if (m.progress >= 1) arrived.push(m);
+  });
+  state.messages = state.messages.filter(function(m) { return m.progress < 1; });
+
+  if (waitingForMsgs && state.messages.length === 0) {
+    waitingForMsgs = false;
+    onMessagesComplete();
+  }
+
+  renderFrame();
+  requestAnimationFrame(animTick);
+}
+
+function onMessagesComplete() {
+  if (state.playing) {
+    var scene = scenes[state.scene];
+    var step = scene.steps[state.stepIdx];
+    var delay = (step.duration || 600) / state.speed;
+    state.playTimer = setTimeout(function() { advanceStep(); }, delay);
+  }
+}
+
+function spawnMessages(msgs) {
+  msgs.forEach(function(m) {
+    var fromP = m.from === 'client' ? clientPos : nodePos[m.from];
+    var toP = m.to === 'client' ? clientPos : nodePos[m.to];
+    state.messages.push({
+      fromX:fromP.x, fromY:fromP.y, toX:toP.x, toY:toP.y,
+      type:m.type, elapsed:0, progress:0, duration:MSG_DUR,
+    });
+  });
+  if (msgs.length > 0) waitingForMsgs = true;
+}
+
+// ─── Step Control ─────────────────────────────────────
+
+function advanceStep() {
+  var scene = scenes[state.scene];
+  if (!scene) return;
+  if (state.stepIdx >= scene.steps.length - 1) {
+    pauseAnim();
+    return;
+  }
+  state.stepIdx++;
+  applyCurrentStep();
+}
+
+function applyCurrentStep() {
+  var scene = scenes[state.scene];
+  var step = scene.steps[state.stepIdx];
+  step.apply();
+  addEvent(step.desc);
+  updateExplainer(step);
+  updateStepIndicator();
+  spawnMessages(step.messages);
+  startAnimLoop();
+
+  if (step.messages.length === 0 && state.playing) {
+    var delay = (step.duration || 600) / state.speed;
+    state.playTimer = setTimeout(function() { advanceStep(); }, delay);
+  }
+  if (step.messages.length === 0 && !state.playing) {
+    renderFrame();
+  }
+  updatePrompt();
+}
+
+function setScene(name) {
+  pauseAnim();
+  state.scene = name;
+  state.stepIdx = -1;
+  state.explored[name] = true;
+  scenes[name].init();
+  clearEventLog();
+  updateExplainer({ desc: scenes[name].title, detail: scenes[name].sub, ref: '' });
+  updateStepIndicator();
+  renderFrame();
+  updatePrompt();
+  updateSceneButtons();
+}
+
+// ─── Transport Controls ───────────────────────────────
+
+function playAnim() {
+  if (!state.scene) return;
+  state.playing = true;
+  updateTransportButtons();
+  advanceStep();
+}
+
+function pauseAnim() {
+  state.playing = false;
+  clearTimeout(state.playTimer);
+  updateTransportButtons();
+}
+
+function stepOnce() {
+  if (!state.scene) return;
+  pauseAnim();
+  advanceStep();
+}
+
+function resetScene() {
+  if (!state.scene) return;
+  pauseAnim();
+  state.stepIdx = -1;
+  scenes[state.scene].init();
+  clearEventLog();
+  updateExplainer({ desc: scenes[state.scene].title, detail: scenes[state.scene].sub, ref: '' });
+  updateStepIndicator();
+  renderFrame();
+}
+
+// ─── UI Updates ───────────────────────────────────────
+
+function updateExplainer(step) {
+  var scene = scenes[state.scene];
+  document.getElementById('expStep').textContent = scene ? scene.title + ' \u2014 Step ' + (state.stepIdx + 1) + '/' + scene.steps.length : '';
+  document.getElementById('expDesc').textContent = step.desc || '';
+  document.getElementById('expDetail').textContent = step.detail || '';
+  document.getElementById('expRef').textContent = step.ref || '';
+}
+
+function updateStepIndicator() {
+  var scene = scenes[state.scene];
+  var total = scene ? scene.steps.length : 0;
+  document.getElementById('stepIndicator').textContent = 'Step ' + (state.stepIdx + 1) + ' / ' + total;
+}
+
+function addEvent(text) {
+  var log = document.getElementById('eventLog');
+  var entry = el('div', 'event-entry');
+  var time = el('span', 'ev-time', '[' + (state.stepIdx + 1) + ']');
+  entry.appendChild(time);
+  entry.appendChild(document.createTextNode(' ' + text));
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearEventLog() { clr(document.getElementById('eventLog')); }
+
+function updateStatePanel() {
+  var grid = document.getElementById('stateGrid');
+  clr(grid);
+  var leader = null;
+  var maxTerm = 0;
+  state.nodes.forEach(function(n, i) {
+    if (n.state === 'leader' && n.alive) leader = nodePos[i].label;
+    if (n.term > maxTerm) maxTerm = n.term;
+  });
+  var aliveCount = state.nodes.filter(function(n){ return n.alive; }).length;
+
+  var items = [
+    ['Leader', leader || 'None', leader ? 'leader' : ''],
+    ['Term', String(maxTerm), 'term'],
+    ['Quorum', aliveCount + '/3', aliveCount >= 2 ? 'leader' : ''],
+  ];
+  state.nodes.forEach(function(n, i) {
+    items.push([nodePos[i].label, n.alive ? n.state : 'dead', '']);
+  });
+  items.forEach(function(item) {
+    var lbl = el('span', 'state-label', item[0]);
+    var val = el('span', 'state-val' + (item[2] ? ' ' + item[2] : ''), item[1]);
+    grid.appendChild(lbl);
+    grid.appendChild(val);
+  });
+}
+
+function updateTransportButtons() {
+  var btns = document.getElementById('transport').children;
+  if (btns[0]) { btns[0].classList.toggle('playing', state.playing); btns[0].textContent = state.playing ? 'Pause' : 'Play'; }
+}
+
+function updateSceneButtons() {
+  var btns = document.getElementById('sceneList').children;
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].classList.toggle('active', btns[i].dataset.scene === state.scene);
+  }
+}
+
+// ─── Prompt ───────────────────────────────────────────
+
+function updatePrompt() {
+  var explored = Object.keys(state.explored);
+  var allScenes = Object.keys(scenes);
+  var unexplored = allScenes.filter(function(s) { return !state.explored[s]; });
+
+  var text = 'I\'m studying Raft consensus in the Confman distributed configuration service (DotNext.Net.Cluster on .NET).';
+  if (explored.length > 0) {
+    text += '\n\nI\'ve explored: ' + explored.map(function(s) { return scenes[s].title; }).join(', ') + '.';
+  }
+  if (unexplored.length > 0) {
+    text += '\nI haven\'t yet explored: ' + unexplored.map(function(s) { return scenes[s].title; }).join(', ') + '.';
+    text += '\n\nPlease explain these remaining topics in depth, with references to the Confman codebase (Cluster/RaftService.cs, ConfigStateMachine.cs, ReadBarrierMiddleware.cs).';
+  } else {
+    text += '\n\nI\'ve explored all scenarios. Help me understand edge cases: What happens with 5 nodes? How does log compaction interact with snapshots (every 100 entries)? How does DotNext handle pre-vote?';
+  }
+  document.getElementById('promptText').textContent = text;
+}
+
+function copyPrompt() {
+  var text = document.getElementById('promptText').textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    var btn = document.getElementById('copyBtn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+// ─── Build Controls ───────────────────────────────────
+
+function buildUI() {
+  // Scene buttons
+  var list = document.getElementById('sceneList');
+  Object.keys(scenes).forEach(function(key) {
+    var s = scenes[key];
+    var btn = el('button', 'scene-btn');
+    btn.dataset.scene = key;
+    btn.addEventListener('click', function() { setScene(key); });
+    btn.appendChild(document.createTextNode(s.title));
+    var sub = el('span', 'scene-sub', s.sub);
+    btn.appendChild(sub);
+    list.appendChild(btn);
+  });
+
+  // Transport buttons
+  var transport = document.getElementById('transport');
+  var playBtn = el('button', '', 'Play');
+  playBtn.addEventListener('click', function() { state.playing ? pauseAnim() : playAnim(); });
+  var stepBtn = el('button', '', 'Step');
+  stepBtn.addEventListener('click', stepOnce);
+  var resetBtn = el('button', '', 'Reset');
+  resetBtn.addEventListener('click', resetScene);
+  transport.appendChild(playBtn);
+  transport.appendChild(stepBtn);
+  transport.appendChild(resetBtn);
+
+  // Speed slider
+  var slider = document.getElementById('speedSlider');
+  var speedVal = document.getElementById('speedVal');
+  slider.addEventListener('input', function() {
+    state.speed = parseFloat(this.value);
+    speedVal.textContent = state.speed + 'x';
+  });
+
+  // Copy button
+  document.getElementById('copyBtn').addEventListener('click', copyPrompt);
+}
+
+// ─── Init ─────────────────────────────────────────────
+
+buildSVG();
+buildUI();
+resetNodes();
+renderFrame();
+updatePrompt();
+// Auto-select first scene
+setScene('election');
+</script>
+</body>
+</html>
