@@ -2,6 +2,7 @@ using System.Text.Json;
 using Confman.Api.Cluster.Commands;
 using DotNext.IO;
 using DotNext.Net.Cluster.Consensus.Raft;
+using Microsoft.AspNetCore.Connections;
 
 namespace Confman.Api.Cluster;
 
@@ -53,9 +54,9 @@ public class RaftService : IRaftService
             if (leader is null)
                 return null;
 
-            // The leader endpoint is an IPEndPoint, we need to construct a URI
             return leader.EndPoint switch
             {
+                UriEndPoint uriEndPoint => uriEndPoint.Uri,
                 System.Net.IPEndPoint ipEndPoint => new Uri($"http://{ipEndPoint.Address}:{ipEndPoint.Port}"),
                 System.Net.DnsEndPoint dnsEndPoint => new Uri($"http://{dnsEndPoint.Host}:{dnsEndPoint.Port}"),
                 _ => null

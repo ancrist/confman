@@ -190,8 +190,7 @@ public class NamespacesController : ControllerBase
         _logger.LogDebug("Forwarding write request to leader: {LeaderUri}", redirectUri);
 
         return Task.FromResult<IActionResult>(
-            StatusCode(StatusCodes.Status307TemporaryRedirect,
-                new { leader = redirectUri.ToString() }));
+            RedirectPreserveMethod(redirectUri.ToString()));
     }
 }
 
