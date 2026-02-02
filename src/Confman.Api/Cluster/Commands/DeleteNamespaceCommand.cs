@@ -21,7 +21,7 @@ public sealed record DeleteNamespaceCommand : ICommand
             await store.DeleteNamespaceAsync(Path, ct);
 
             // Create audit on all nodes - storage handles idempotency via upsert
-            const string action = "namespace.deleted";
+            var action = AuditAction.NamespaceDeleted;
             await store.AppendAuditAsync(new AuditEvent
             {
                 Id = AuditIdGenerator.Generate(Timestamp, Path, null, action),

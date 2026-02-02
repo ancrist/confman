@@ -29,7 +29,7 @@ public sealed record SetNamespaceCommand : ICommand
         await store.SetNamespaceAsync(ns, ct);
 
         // Create audit on all nodes - storage handles idempotency via upsert
-        var action = existing is null ? "namespace.created" : "namespace.updated";
+        var action = existing is null ? AuditAction.NamespaceCreated : AuditAction.NamespaceUpdated;
         await store.AppendAuditAsync(new AuditEvent
         {
             Id = AuditIdGenerator.Generate(Timestamp, Path, null, action),

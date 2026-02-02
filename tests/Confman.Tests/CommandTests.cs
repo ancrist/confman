@@ -61,7 +61,7 @@ public class CommandTests : IDisposable
 
         var audit = await _store.GetAuditEventsAsync("test-ns");
         Assert.Single(audit);
-        Assert.Equal("config.created", audit[0].Action);
+        Assert.Equal(AuditAction.ConfigCreated, audit[0].Action);
         Assert.Equal("test-author", audit[0].Actor);
     }
 
@@ -93,7 +93,7 @@ public class CommandTests : IDisposable
 
         var audit = await _store.GetAuditEventsAsync("test-ns");
         Assert.Equal(2, audit.Count);
-        Assert.Equal("config.updated", audit[0].Action);
+        Assert.Equal(AuditAction.ConfigUpdated, audit[0].Action);
         Assert.Equal("value-v1", audit[0].OldValue);
         Assert.Equal("value-v2", audit[0].NewValue);
     }
@@ -130,7 +130,7 @@ public class CommandTests : IDisposable
         var audit = await _store.GetAuditEventsAsync("idempotent-test");
         Assert.Single(audit);
         // Action is "updated" because subsequent applies see the entry exists
-        Assert.Equal("config.updated", audit[0].Action);
+        Assert.Equal(AuditAction.ConfigUpdated, audit[0].Action);
     }
 
     #endregion
@@ -163,7 +163,7 @@ public class CommandTests : IDisposable
 
         var audit = await _store.GetAuditEventsAsync("test-ns");
         Assert.Equal(2, audit.Count);
-        Assert.Equal("config.deleted", audit[0].Action);
+        Assert.Equal(AuditAction.ConfigDeleted, audit[0].Action);
         Assert.Equal("test-value", audit[0].OldValue);
         Assert.Null(audit[0].NewValue);
     }
@@ -208,7 +208,7 @@ public class CommandTests : IDisposable
 
         var audit = await _store.GetAuditEventsAsync("my-namespace");
         Assert.Single(audit);
-        Assert.Equal("namespace.created", audit[0].Action);
+        Assert.Equal(AuditAction.NamespaceCreated, audit[0].Action);
     }
 
     [Fact]
@@ -237,7 +237,7 @@ public class CommandTests : IDisposable
 
         var audit = await _store.GetAuditEventsAsync("my-namespace");
         Assert.Equal(2, audit.Count);
-        Assert.Equal("namespace.updated", audit[0].Action);
+        Assert.Equal(AuditAction.NamespaceUpdated, audit[0].Action);
         Assert.Equal("Original", audit[0].OldValue);
         Assert.Equal("Updated", audit[0].NewValue);
     }
@@ -270,7 +270,7 @@ public class CommandTests : IDisposable
 
         var audit = await _store.GetAuditEventsAsync("my-namespace");
         Assert.Equal(2, audit.Count);
-        Assert.Equal("namespace.deleted", audit[0].Action);
+        Assert.Equal(AuditAction.NamespaceDeleted, audit[0].Action);
     }
 
     #endregion
