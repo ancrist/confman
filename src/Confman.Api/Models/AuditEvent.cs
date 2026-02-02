@@ -9,7 +9,7 @@ public class AuditEvent
 {
     public ObjectId Id { get; set; } = ObjectId.NewObjectId();
     public required DateTimeOffset Timestamp { get; set; }
-    public required string Action { get; set; }
+    public required AuditAction Action { get; set; }
     public required string Actor { get; set; }
     public required string Namespace { get; set; }
     public string? Key { get; set; }

@@ -23,7 +23,7 @@ public sealed record DeleteConfigCommand : ICommand
             await store.DeleteAsync(Namespace, Key, ct);
 
             // Create audit on all nodes - storage handles idempotency via upsert
-            const string action = "config.deleted";
+            var action = AuditAction.ConfigDeleted;
             await store.AppendAuditAsync(new AuditEvent
             {
                 Id = AuditIdGenerator.Generate(Timestamp, Namespace, Key, action),

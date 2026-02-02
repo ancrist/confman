@@ -26,6 +26,11 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
         var dbPath = Path.Combine(dataPath, "confman.db");
         _logger.LogInformation("Opening LiteDB at: {Path}", dbPath);
 
+        // Register AuditAction as a flat string in BSON (backward compatible)
+        BsonMapper.Global.RegisterType<AuditAction>(
+            serialize: action => action.Value,
+            deserialize: bson => AuditAction.Parse(bson.AsString));
+
         // LiteDB connection string with thread-safe mode
         _db = new LiteDatabase($"Filename={dbPath};Connection=shared");
 

@@ -1,3 +1,4 @@
+using Confman.Api.Models;
 using LiteDB;
 
 namespace Confman.Api.Cluster.Commands;
@@ -13,7 +14,7 @@ public static class AuditIdGenerator
     /// Uses timestamp, namespace, and key to create a unique, reproducible ID.
     /// Action is NOT included because it may change on replay (created vs updated).
     /// </summary>
-    public static ObjectId Generate(DateTimeOffset timestamp, string ns, string? key, string action)
+    public static ObjectId Generate(DateTimeOffset timestamp, string ns, string? key, AuditAction action)
     {
         // Create a deterministic hash from the composite key
         // Note: action is NOT included - on log replay, the action might differ

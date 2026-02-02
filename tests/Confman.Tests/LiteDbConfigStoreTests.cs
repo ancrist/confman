@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Confman.Api.Cluster;
 using Confman.Api.Cluster.Commands;
 using Confman.Api.Models;
@@ -5,6 +6,7 @@ using Confman.Api.Storage;
 using LiteDB;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace Confman.Tests;
 
@@ -197,7 +199,7 @@ public class LiteDbConfigStoreTests : IDisposable
         var evt = new AuditEvent
         {
             Timestamp = DateTimeOffset.UtcNow,
-            Action = "config.created",
+            Action = AuditAction.ConfigCreated,
             Actor = "test-user",
             Namespace = "test-ns",
             Key = "test-key",
@@ -208,32 +210,34 @@ public class LiteDbConfigStoreTests : IDisposable
 
         var events = await _store.GetAuditEventsAsync("test-ns");
         Assert.Single(events);
-        Assert.Equal("config.created", events[0].Action);
+        Assert.Equal(AuditAction.ConfigCreated, events[0].Action);
     }
 
     [Fact]
     public async Task GetAuditEventsAsync_ReturnsOrderedByTimestamp()
     {
+        // Truncate to milliseconds — LiteDB stores BSON DateTime at ms precision
         var now = DateTimeOffset.UtcNow;
+        now = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMillisecond));
 
         await _store.AppendAuditAsync(new AuditEvent
         {
             Timestamp = now.AddMinutes(-2),
-            Action = "oldest",
+            Action = AuditAction.ConfigCreated,
             Actor = "user",
             Namespace = "ns"
         });
         await _store.AppendAuditAsync(new AuditEvent
         {
             Timestamp = now,
-            Action = "newest",
+            Action = AuditAction.ConfigDeleted,
             Actor = "user",
             Namespace = "ns"
         });
         await _store.AppendAuditAsync(new AuditEvent
         {
             Timestamp = now.AddMinutes(-1),
-            Action = "middle",
+            Action = AuditAction.ConfigUpdated,
             Actor = "user",
             Namespace = "ns"
         });
@@ -241,9 +245,10 @@ public class LiteDbConfigStoreTests : IDisposable
         var events = await _store.GetAuditEventsAsync("ns");
 
         Assert.Equal(3, events.Count);
-        Assert.Equal("newest", events[0].Action);
-        Assert.Equal("middle", events[1].Action);
-        Assert.Equal("oldest", events[2].Action);
+        // Ordered by timestamp descending: newest first
+        Assert.Equal(now, events[0].Timestamp);
+        Assert.Equal(now.AddMinutes(-1), events[1].Timestamp);
+        Assert.Equal(now.AddMinutes(-2), events[2].Timestamp);
     }
 
     [Fact]
@@ -254,7 +259,7 @@ public class LiteDbConfigStoreTests : IDisposable
             await _store.AppendAuditAsync(new AuditEvent
             {
                 Timestamp = DateTimeOffset.UtcNow.AddMinutes(i),
-                Action = $"action-{i}",
+                Action = AuditAction.ConfigUpdated,
                 Actor = "user",
                 Namespace = "ns"
             });
@@ -274,7 +279,7 @@ public class LiteDbConfigStoreTests : IDisposable
         {
             Id = id,
             Timestamp = DateTimeOffset.UtcNow,
-            Action = "config.created",
+            Action = AuditAction.ConfigCreated,
             Actor = "user",
             Namespace = "ns",
             Key = "key",
@@ -285,7 +290,7 @@ public class LiteDbConfigStoreTests : IDisposable
         {
             Id = id, // Same ID
             Timestamp = DateTimeOffset.UtcNow,
-            Action = "config.created",
+            Action = AuditAction.ConfigCreated,
             Actor = "user",
             Namespace = "ns",
             Key = "key",
@@ -318,8 +323,8 @@ public class LiteDbConfigStoreTests : IDisposable
     [Fact]
     public async Task GetAllAuditEventsAsync_ReturnsAllAuditEvents()
     {
-        await _store.AppendAuditAsync(new AuditEvent { Timestamp = DateTimeOffset.UtcNow, Action = "a1", Actor = "u", Namespace = "ns1" });
-        await _store.AppendAuditAsync(new AuditEvent { Timestamp = DateTimeOffset.UtcNow, Action = "a2", Actor = "u", Namespace = "ns2" });
+        await _store.AppendAuditAsync(new AuditEvent { Timestamp = DateTimeOffset.UtcNow, Action = AuditAction.ConfigCreated, Actor = "u", Namespace = "ns1" });
+        await _store.AppendAuditAsync(new AuditEvent { Timestamp = DateTimeOffset.UtcNow, Action = AuditAction.ConfigUpdated, Actor = "u", Namespace = "ns2" });
 
         var events = await _store.GetAllAuditEventsAsync();
 
@@ -332,7 +337,7 @@ public class LiteDbConfigStoreTests : IDisposable
         // Create existing data
         await _store.SetAsync(new ConfigEntry { Namespace = "old", Key = "key", Value = "old-value", UpdatedBy = "u" });
         await _store.SetNamespaceAsync(new Namespace { Path = "old-ns", Owner = "u" });
-        await _store.AppendAuditAsync(new AuditEvent { Timestamp = DateTimeOffset.UtcNow, Action = "old-action", Actor = "u", Namespace = "old" });
+        await _store.AppendAuditAsync(new AuditEvent { Timestamp = DateTimeOffset.UtcNow, Action = AuditAction.ConfigCreated, Actor = "u", Namespace = "old" });
 
         // Create snapshot data
         var snapshot = new SnapshotData
@@ -350,7 +355,7 @@ public class LiteDbConfigStoreTests : IDisposable
             ],
             AuditEvents =
             [
-                new AuditEvent { Timestamp = DateTimeOffset.UtcNow, Action = "new-action", Actor = "u", Namespace = "new" }
+                new AuditEvent { Timestamp = DateTimeOffset.UtcNow, Action = AuditAction.NamespaceCreated, Actor = "u", Namespace = "new" }
             ]
         };
 
@@ -372,7 +377,7 @@ public class LiteDbConfigStoreTests : IDisposable
 
         var events = await _store.GetAuditEventsAsync("new");
         Assert.Single(events);
-        Assert.Equal("new-action", events[0].Action);
+        Assert.Equal(AuditAction.NamespaceCreated, events[0].Action);
     }
 
     #endregion
@@ -384,8 +389,8 @@ public class LiteDbConfigStoreTests : IDisposable
     {
         var timestamp = DateTimeOffset.Parse("2026-01-26T10:00:00Z");
 
-        var id1 = AuditIdGenerator.Generate(timestamp, "ns", "key", "config.created");
-        var id2 = AuditIdGenerator.Generate(timestamp, "ns", "key", "config.created");
+        var id1 = AuditIdGenerator.Generate(timestamp, "ns", "key", AuditAction.ConfigCreated);
+        var id2 = AuditIdGenerator.Generate(timestamp, "ns", "key", AuditAction.ConfigCreated);
 
         Assert.Equal(id1, id2); // Same inputs = same ID
     }
@@ -397,8 +402,8 @@ public class LiteDbConfigStoreTests : IDisposable
         // even when action changes from "created" to "updated"
         var timestamp = DateTimeOffset.Parse("2026-01-26T10:00:00Z");
 
-        var id1 = AuditIdGenerator.Generate(timestamp, "ns", "key", "config.created");
-        var id2 = AuditIdGenerator.Generate(timestamp, "ns", "key", "config.updated");
+        var id1 = AuditIdGenerator.Generate(timestamp, "ns", "key", AuditAction.ConfigCreated);
+        var id2 = AuditIdGenerator.Generate(timestamp, "ns", "key", AuditAction.ConfigUpdated);
 
         Assert.Equal(id1, id2); // Same ID despite different action
     }
@@ -408,12 +413,99 @@ public class LiteDbConfigStoreTests : IDisposable
     {
         var timestamp = DateTimeOffset.Parse("2026-01-26T10:00:00Z");
 
-        var id1 = AuditIdGenerator.Generate(timestamp, "ns", "key1", "config.created");
-        var id2 = AuditIdGenerator.Generate(timestamp, "ns", "key2", "config.created");
-        var id3 = AuditIdGenerator.Generate(timestamp.AddSeconds(1), "ns", "key1", "config.created");
+        var id1 = AuditIdGenerator.Generate(timestamp, "ns", "key1", AuditAction.ConfigCreated);
+        var id2 = AuditIdGenerator.Generate(timestamp, "ns", "key2", AuditAction.ConfigCreated);
+        var id3 = AuditIdGenerator.Generate(timestamp.AddSeconds(1), "ns", "key1", AuditAction.ConfigCreated);
 
         Assert.NotEqual(id1, id2); // Different key
         Assert.NotEqual(id1, id3); // Different timestamp
+    }
+
+    #endregion
+
+    #region AuditAction Serialization
+
+    [Fact]
+    public void AuditAction_JsonRoundTrip_SerializesAsFlatString()
+    {
+        var evt = new AuditEvent
+        {
+            Timestamp = DateTimeOffset.UtcNow,
+            Action = AuditAction.ConfigCreated,
+            Actor = "user",
+            Namespace = "ns"
+        };
+
+        var json = JsonSerializer.Serialize(evt);
+        Assert.Contains("\"config.created\"", json);
+
+        var deserialized = JsonSerializer.Deserialize<AuditEvent>(json)!;
+        Assert.Equal(AuditAction.ConfigCreated, deserialized.Action);
+        Assert.Equal("config", deserialized.Action.ResourceType);
+        Assert.Equal("created", deserialized.Action.Verb);
+    }
+
+    [Fact]
+    public void AuditAction_JsonBackwardCompat_DeserializesPlainString()
+    {
+        // Simulate a JSON snapshot from the old format where Action was a string
+        var json = """{"Timestamp":"2026-01-26T10:00:00+00:00","Action":"namespace.deleted","Actor":"user","Namespace":"ns","Key":null,"OldValue":null,"NewValue":null}""";
+
+        var evt = JsonSerializer.Deserialize<AuditEvent>(json)!;
+        Assert.Equal(AuditAction.NamespaceDeleted, evt.Action);
+        Assert.Equal("namespace", evt.Action.ResourceType);
+        Assert.Equal("deleted", evt.Action.Verb);
+    }
+
+    [Fact]
+    public async Task AuditAction_BsonRoundTrip_SerializesAsFlatString()
+    {
+        var evt = new AuditEvent
+        {
+            Timestamp = DateTimeOffset.UtcNow,
+            Action = AuditAction.NamespaceUpdated,
+            Actor = "user",
+            Namespace = "test-bson"
+        };
+
+        await _store.AppendAuditAsync(evt);
+
+        var events = await _store.GetAuditEventsAsync("test-bson");
+        Assert.Single(events);
+        Assert.Equal(AuditAction.NamespaceUpdated, events[0].Action);
+        Assert.Equal("namespace", events[0].Action.ResourceType);
+        Assert.Equal("updated", events[0].Action.Verb);
+    }
+
+    [Fact]
+    public void AuditAction_Parse_RoundTripsAllKnownActions()
+    {
+        var actions = new[]
+        {
+            AuditAction.ConfigCreated, AuditAction.ConfigUpdated, AuditAction.ConfigDeleted,
+            AuditAction.NamespaceCreated, AuditAction.NamespaceUpdated, AuditAction.NamespaceDeleted
+        };
+
+        foreach (var action in actions)
+        {
+            var parsed = AuditAction.Parse(action.ToString());
+            Assert.Equal(action, parsed);
+        }
+    }
+
+    [Fact]
+    public void AuditAction_Parse_ThrowsOnInvalidFormat()
+    {
+        Assert.Throws<FormatException>(() => AuditAction.Parse("noDotHere"));
+    }
+
+    [Fact]
+    public void AuditAction_ValueEquality_Works()
+    {
+        var a = AuditAction.ConfigCreated;
+        var b = AuditAction.Parse("config.created");
+        Assert.Equal(a, b);
+        Assert.True(a == b);
     }
 
     #endregion

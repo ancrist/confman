@@ -63,7 +63,7 @@ public record AuditEventDto
     public static AuditEventDto FromModel(AuditEvent evt) => new()
     {
         Timestamp = evt.Timestamp,
-        Action = evt.Action,
+        Action = evt.Action.ToString(),
         Actor = evt.Actor,
         Namespace = evt.Namespace,
         Key = evt.Key,

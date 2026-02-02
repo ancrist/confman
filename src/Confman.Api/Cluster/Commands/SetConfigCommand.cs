@@ -33,7 +33,7 @@ public sealed record SetConfigCommand : ICommand
         await store.SetAsync(entry, ct);
 
         // Create audit on all nodes - storage handles idempotency via upsert
-        var action = existing is null ? "config.created" : "config.updated";
+        var action = existing is null ? AuditAction.ConfigCreated : AuditAction.ConfigUpdated;
         await store.AppendAuditAsync(new AuditEvent
         {
             Id = AuditIdGenerator.Generate(Timestamp, Namespace, Key, action),
