@@ -90,15 +90,17 @@ public static class AuthExtensions
                 policy.RequireAuthenticatedUser()
                     .RequireAssertion(ctx =>
                         ctx.User.IsInRole("admin") ||
-                        ctx.User.IsInRole("read") ||
-                        ctx.User.IsInRole("write")));
+                        ctx.User.IsInRole("publisher") ||
+                        ctx.User.IsInRole("editor") ||
+                        ctx.User.IsInRole("viewer")));
 
             // Write policy for write operations
             options.AddPolicy("Write", policy =>
                 policy.RequireAuthenticatedUser()
                     .RequireAssertion(ctx =>
                         ctx.User.IsInRole("admin") ||
-                        ctx.User.IsInRole("write")));
+                        ctx.User.IsInRole("publisher") ||
+                        ctx.User.IsInRole("editor")));
 
             // Namespace access policy
             options.AddPolicy("NamespaceAccess", policy =>
