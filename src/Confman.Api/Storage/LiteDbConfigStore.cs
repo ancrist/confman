@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Confman.Api.Cluster;
 using Confman.Api.Models;
 using LiteDB;
@@ -71,6 +72,7 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
 
     public Task SetAsync(ConfigEntry entry, CancellationToken ct = default)
     {
+        var sw = Stopwatch.StartNew();
         var existing = _configs.FindOne(x => x.Namespace == entry.Namespace && x.Key == entry.Key);
 
         if (existing is not null)
@@ -78,15 +80,15 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
             entry.Id = existing.Id;
             entry.Version = existing.Version + 1;
             _configs.Update(entry);
-            _logger.LogDebug("Updated config {Ns}/{Key} to version {Version}",
-                entry.Namespace, entry.Key, entry.Version);
+            _logger.LogDebug("Updated config {Ns}/{Key} to version {Version} ({ElapsedMs} ms)",
+                entry.Namespace, entry.Key, entry.Version, sw.ElapsedMilliseconds);
         }
         else
         {
             entry.Version = 1;
             _configs.Insert(entry);
-            _logger.LogDebug("Created config {Ns}/{Key} version {Version}",
-                entry.Namespace, entry.Key, entry.Version);
+            _logger.LogDebug("Created config {Ns}/{Key} version {Version} ({ElapsedMs} ms)",
+                entry.Namespace, entry.Key, entry.Version, sw.ElapsedMilliseconds);
         }
 
         return Task.CompletedTask;
@@ -94,8 +96,9 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
 
     public Task DeleteAsync(string ns, string key, CancellationToken ct = default)
     {
+        var sw = Stopwatch.StartNew();
         var deleted = _configs.DeleteMany(x => x.Namespace == ns && x.Key == key);
-        _logger.LogDebug("Deleted {Count} configs for {Ns}/{Key}", deleted, ns, key);
+        _logger.LogDebug("Deleted {Count} configs for {Ns}/{Key} ({ElapsedMs} ms)", deleted, ns, key, sw.ElapsedMilliseconds);
         return Task.CompletedTask;
     }
 
@@ -117,6 +120,7 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
 
     public Task SetNamespaceAsync(Namespace ns, CancellationToken ct = default)
     {
+        var sw = Stopwatch.StartNew();
         var existing = _namespaces.FindOne(x => x.Path == ns.Path);
 
         if (existing is not null)
@@ -124,12 +128,12 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
             ns.Id = existing.Id;
             ns.CreatedAt = existing.CreatedAt;
             _namespaces.Update(ns);
-            _logger.LogDebug("Updated namespace {Path}", ns.Path);
+            _logger.LogDebug("Updated namespace {Path} ({ElapsedMs} ms)", ns.Path, sw.ElapsedMilliseconds);
         }
         else
         {
             _namespaces.Insert(ns);
-            _logger.LogDebug("Created namespace {Path}", ns.Path);
+            _logger.LogDebug("Created namespace {Path} ({ElapsedMs} ms)", ns.Path, sw.ElapsedMilliseconds);
         }
 
         return Task.CompletedTask;
@@ -155,10 +159,11 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
 
     public Task AppendAuditAsync(AuditEvent evt, CancellationToken ct = default)
     {
+        var sw = Stopwatch.StartNew();
         // Use upsert for idempotency during log replay on all nodes
         _audit.Upsert(evt);
-        _logger.LogDebug("Upserted audit event: {Action} on {Ns}/{Key}",
-            evt.Action, evt.Namespace, evt.Key);
+        _logger.LogDebug("Upserted audit event: {Action} on {Ns}/{Key} ({ElapsedMs} ms)",
+            evt.Action, evt.Namespace, evt.Key, sw.ElapsedMilliseconds);
         return Task.CompletedTask;
     }
 

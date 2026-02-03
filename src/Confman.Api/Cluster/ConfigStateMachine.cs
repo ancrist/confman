@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Text.Json;
 using Confman.Api.Cluster.Commands;
 using Confman.Api.Storage;
@@ -46,6 +47,7 @@ public sealed class ConfigStateMachine : SimpleStateMachine
             return false;
         }
 
+        var sw = Stopwatch.StartNew();
         try
         {
             var command = DeserializeCommand(payload);
@@ -64,8 +66,8 @@ public sealed class ConfigStateMachine : SimpleStateMachine
             // Storage uses upsert for idempotency during log replay
             await command.ApplyAsync(store, token);
 
-            _logger.LogDebug("Applied {CommandType} at index {Index}, term {Term}",
-                command.GetType().Name, entry.Index, entry.Term);
+            _logger.LogDebug("Applied {CommandType} at index {Index}, term {Term} ({ElapsedMs} ms)",
+                command.GetType().Name, entry.Index, entry.Term, sw.ElapsedMilliseconds);
 
             // Create snapshot every 100 entries for compaction
             return entry.Index % 100 == 0;

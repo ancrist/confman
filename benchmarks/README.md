@@ -15,6 +15,8 @@ cd benchmarks
 pip install -r requirements.txt
 ```
 
+Dependencies: `locust`, `requests`, `pandas`, `tabulate` (pandas/tabulate are optional but enable the formatted results table).
+
 ## Usage
 
 ```bash
@@ -23,6 +25,9 @@ python run_benchmark.py --tier small
 
 # Run large tier (20 namespaces, 1000 entries)
 python run_benchmark.py --tier large
+
+# View results from previous run (no benchmarks)
+python run_benchmark.py --results-only
 
 # Custom entry point and API key
 python run_benchmark.py --tier small --host http://127.0.0.1:6200
@@ -56,17 +61,28 @@ The local 3-node cluster runs all nodes on a single machine, sharing CPU and I/O
 
 ## Output
 
-Results are written as CSV files to `benchmarks/results/`:
+After running, a formatted summary table is displayed:
 
 ```
-results/
-  small-write-1u_stats.csv
-  small-write-1u_stats_history.csv
-  small-read-50u_stats.csv
-  ...
+────────────────────────────────────────────────────────────────────────────────
+  BENCHMARK RESULTS (SMALL tier)
+────────────────────────────────────────────────────────────────────────────────
+Scenario      Requests  Failures    Throughput    p50    p95    p99    Max
+----------  ----------  ----------  ------------  -----  -----  -----  -----
+write-1u           123  10 (8.1%)   8.8/s         35ms   69ms   79ms   79ms
+write-10u          536  44 (8.2%)   38.2/s        180ms  270ms  300ms  350ms
+read-1u          14772  0 (0.0%)    1054.9/s      1ms    1ms    3ms    39ms
+read-10u         30674  0 (0.0%)    2190.3/s      4ms    7ms    12ms   24ms
+mixed-10u         4690  77 (1.6%)   161.3/s       25ms   91ms   130ms  220ms
+────────────────────────────────────────────────────────────────────────────────
+
+  Key Metrics:
+    Peak read throughput:  2,190 req/s
+    Peak write throughput: 38 req/s
+    Read/Write ratio:      57x (reads are 57x faster)
 ```
 
-CSV files can be opened in any spreadsheet application or parsed with pandas.
+Raw CSV files are also written to `benchmarks/results/` for further analysis.
 
 ## Configuration
 
@@ -77,6 +93,7 @@ CSV files can be opened in any spreadsheet application or parsed with pandas.
 | `--api-key` | `confman_dev_abc123` | API key (or `CONFMAN_BENCH_API_KEY` env var) |
 | `--output-dir` | `benchmarks/results/` | CSV output directory |
 | `--no-cleanup` | off | Keep test data after run |
+| `--results-only` | off | Display results from previous run without running benchmarks |
 
 ## Architecture
 
