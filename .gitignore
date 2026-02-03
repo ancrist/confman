@@ -58,3 +58,7 @@ node_modules/
 
 # Cluster data directories
 data-*/
+
+# Benchmark results
+benchmarks/results/
+!benchmarks/results/.gitkeep

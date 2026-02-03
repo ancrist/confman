@@ -118,9 +118,24 @@ public class ConfigController : ControllerBase
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
-        // Fetch the updated entry
-        var entry = await _store.GetAsync(ns, key, ct);
-        var dto = ConfigEntryDto.FromModel(entry!);
+        // Fetch the updated entry - may need brief retry due to apply lag
+        ConfigEntry? entry = null;
+        for (var i = 0; i < 5 && entry is null; i++)
+        {
+            entry = await _store.GetAsync(ns, key, ct);
+            if (entry is null)
+                await Task.Delay(10, ct);
+        }
+
+        if (entry is null)
+        {
+            return Problem(
+                title: "Apply pending",
+                detail: "The change was replicated but not yet applied. Retry the read.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        var dto = ConfigEntryDto.FromModel(entry);
 
         if (existing is null)
         {
