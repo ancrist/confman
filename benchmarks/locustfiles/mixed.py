@@ -6,7 +6,7 @@ import json
 import os
 import random
 
-from locust import HttpUser, task, constant
+from locust import HttpUser, task, between
 
 _key_cache: list[dict[str, str]] | None = None
 
@@ -22,7 +22,8 @@ def load_keys() -> list[dict[str, str]]:
 
 
 class MixedUser(HttpUser):
-    wait_time = constant(0)
+    # Small delay between requests to avoid overwhelming Raft consensus
+    wait_time = between(0.01, 0.05)  # 10-50ms between requests
 
     def on_start(self) -> None:
         self.api_key: str = os.environ["BENCH_API_KEY"]

@@ -50,6 +50,13 @@ public sealed class ConfigStateMachine : SimpleStateMachine
         {
             var command = DeserializeCommand(payload);
 
+            // Skip Raft internal entries (no-ops, config changes)
+            if (command is null)
+            {
+                _logger.LogDebug("Skipping non-command entry at index {Index} (Raft internal)", entry.Index);
+                return false;
+            }
+
             // Resolve store from DI
             var store = _serviceProvider.GetRequiredService<IConfigStore>();
 
@@ -147,11 +154,18 @@ public sealed class ConfigStateMachine : SimpleStateMachine
         }
     }
 
-    private static ICommand DeserializeCommand(in ReadOnlySequence<byte> payload)
+    private static ICommand? DeserializeCommand(in ReadOnlySequence<byte> payload)
     {
+        // Skip non-JSON payloads (Raft no-op entries, config changes, etc.)
+        // Valid JSON commands start with '{' (0x7B)
+        if (payload.IsEmpty)
+            return null;
+
+        var firstByte = payload.FirstSpan[0];
+        if (firstByte != (byte)'{')
+            return null;
+
         var reader = new Utf8JsonReader(payload);
-        var command = JsonSerializer.Deserialize<ICommand>(ref reader)
-            ?? throw new InvalidOperationException("Failed to deserialize command from log entry");
-        return command;
+        return JsonSerializer.Deserialize<ICommand>(ref reader);
     }
 }

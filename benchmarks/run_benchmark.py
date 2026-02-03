@@ -148,30 +148,34 @@ def seed_data(
     # Create config entries with progress
     total_entries = ns_count * cfg["keys_per_ns"]
     print(f"  Creating {total_entries} config entries...")
-    count = 0
+    created = 0
+    failed = 0
     for ns_idx in range(ns_count):
         ns = namespace_name(tier, ns_idx)
         for _ in range(cfg["keys_per_ns"]):
             key = generate_key()
             try:
-                req.put(
+                r = req.put(
                     f"{leader}/api/v1/namespaces/{ns}/config/{key}",
                     json={"value": payload_value},
                     headers=headers,
                     timeout=10,
                 )
+                if r.status_code < 400:
+                    registry.append({"namespace": ns, "key": key})
+                    created += 1
+                else:
+                    failed += 1
             except req.RequestException:
-                pass  # Best-effort seeding; Locust will report errors on missing keys
-            registry.append({"namespace": ns, "key": key})
-            count += 1
+                failed += 1
             # Throttle seeding to avoid overwhelming Raft consensus.
             # Each write requires propose → replicate → commit → apply,
             # and generates an audit event (doubling Raft log entries).
             time.sleep(0.1)
-            if count % 50 == 0:
-                print(f"    {count}/{total_entries} entries seeded...")
+            if (created + failed) % 50 == 0:
+                print(f"    {created + failed}/{total_entries} attempted, {created} created, {failed} failed...")
 
-    print(f"  Seeding complete: {count} entries across {ns_count} namespaces.")
+    print(f"  Seeding complete: {created} entries created, {failed} failed across {ns_count} namespaces.")
     return registry
 
 
@@ -351,14 +355,18 @@ def main() -> None:
             failed.append(name)
             print(f"  WARNING: {name} exited with errors")
 
-    # 7. Cleanup
+    # 7. Preserve key registry for debugging, then cleanup
+    registry_copy = output_dir / f"{args.tier}-key-registry.json"
+    shutil.copy(registry_path, registry_copy)
+    print(f"\n  Key registry saved to: {registry_copy}")
+
     if not args.no_cleanup:
-        print(f"\nCleaning up...")
+        print("Cleaning up...")
         cleanup_data(leader, args.api_key, args.tier)
         shutil.rmtree(tmpdir, ignore_errors=True)
         print("  Done.")
     else:
-        print(f"\n--no-cleanup: keeping test data and registry at {registry_path}")
+        print(f"--no-cleanup: keeping test data and registry at {registry_path}")
 
     # 8. Summary
     print(f"\n{'='*40}")

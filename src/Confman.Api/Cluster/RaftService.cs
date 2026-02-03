@@ -95,9 +95,16 @@ public class RaftService : IRaftService
 
             return result;
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            _logger.LogError("Replication timed out after 10 seconds");
+            // HTTP request was cancelled (client disconnect, benchmark teardown, etc.)
+            _logger.LogDebug("Replication cancelled by client for {CommandType}", command.GetType().Name);
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            // Internal timeout (10 seconds)
+            _logger.LogWarning("Replication timed out after 10 seconds for {CommandType}", command.GetType().Name);
             return false;
         }
         catch (Exception ex)

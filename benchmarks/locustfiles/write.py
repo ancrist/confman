@@ -6,13 +6,14 @@ import json
 import os
 from itertools import count
 
-from locust import HttpUser, task, constant
+from locust import HttpUser, task, between
 
 _counter = count()
 
 
 class ConfigWriter(HttpUser):
-    wait_time = constant(0)
+    # Small delay between requests to avoid overwhelming Raft consensus
+    wait_time = between(0.05, 0.1)  # 50-100ms between requests
 
     def on_start(self) -> None:
         self.api_key: str = os.environ["BENCH_API_KEY"]

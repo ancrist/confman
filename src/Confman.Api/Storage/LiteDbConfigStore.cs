@@ -137,6 +137,13 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
 
     public Task DeleteNamespaceAsync(string path, CancellationToken ct = default)
     {
+        // Cascade delete: remove all configs in this namespace first
+        var deletedConfigs = _configs.DeleteMany(x => x.Namespace == path);
+        if (deletedConfigs > 0)
+        {
+            _logger.LogDebug("Cascade deleted {Count} configs in namespace {Path}", deletedConfigs, path);
+        }
+
         var deleted = _namespaces.DeleteMany(x => x.Path == path);
         _logger.LogDebug("Deleted {Count} namespaces for {Path}", deleted, path);
         return Task.CompletedTask;
