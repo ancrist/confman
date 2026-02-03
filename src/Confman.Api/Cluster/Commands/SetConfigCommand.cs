@@ -30,11 +30,9 @@ public sealed record SetConfigCommand : ICommand
             UpdatedBy = Author
         };
 
-        await store.SetAsync(entry, ct);
-
-        // Create audit on all nodes - storage handles idempotency via upsert
+        // Create audit event
         var action = existing is null ? AuditAction.ConfigCreated : AuditAction.ConfigUpdated;
-        await store.AppendAuditAsync(new AuditEvent
+        var audit = new AuditEvent
         {
             Id = AuditIdGenerator.Generate(Timestamp, Namespace, Key, action),
             Timestamp = Timestamp,
@@ -44,6 +42,9 @@ public sealed record SetConfigCommand : ICommand
             Key = Key,
             OldValue = existing?.Value,
             NewValue = Value
-        }, ct);
+        };
+
+        // Batched write - single transaction, single fsync
+        await store.SetWithAuditAsync(entry, audit, ct);
     }
 }

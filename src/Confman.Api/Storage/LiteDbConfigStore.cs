@@ -210,6 +210,54 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
 
     #endregion
 
+    #region Batched Operations
+
+    public Task SetWithAuditAsync(ConfigEntry entry, AuditEvent audit, CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+        var existing = _configs.FindOne(x => x.Namespace == entry.Namespace && x.Key == entry.Key);
+        var findMs = sw.ElapsedMilliseconds;
+
+        _db.BeginTrans();
+        try
+        {
+            if (existing is not null)
+            {
+                entry.Id = existing.Id;
+                entry.Version = existing.Version + 1;
+                _configs.Update(entry);
+            }
+            else
+            {
+                entry.Version = 1;
+                _configs.Insert(entry);
+            }
+
+            _audit.Upsert(audit);
+            _db.Commit();
+
+            if (_logApplies)
+            {
+                _logger.LogInformation("Set config {Ns}/{Key} v{Version} + audit (find: {FindMs} ms, total: {ElapsedMs} ms)",
+                    entry.Namespace, entry.Key, entry.Version, findMs, sw.ElapsedMilliseconds);
+            }
+            else
+            {
+                _logger.LogDebug("Set config {Ns}/{Key} v{Version} + audit (find: {FindMs} ms, total: {ElapsedMs} ms)",
+                    entry.Namespace, entry.Key, entry.Version, findMs, sw.ElapsedMilliseconds);
+            }
+        }
+        catch
+        {
+            _db.Rollback();
+            throw;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    #endregion
+
     #region Bulk Operations for Snapshots
 
     public Task<List<ConfigEntry>> GetAllConfigsAsync(CancellationToken ct = default)

@@ -26,6 +26,9 @@ public interface IConfigStore
     Task AppendAuditAsync(AuditEvent evt, CancellationToken ct = default);
     Task<IReadOnlyList<AuditEvent>> GetAuditEventsAsync(string ns, int limit = 50, CancellationToken ct = default);
 
+    // Batched operations (single transaction for better performance)
+    Task SetWithAuditAsync(ConfigEntry entry, AuditEvent audit, CancellationToken ct = default);
+
     // Bulk operations for snapshots
     Task<List<ConfigEntry>> GetAllConfigsAsync(CancellationToken ct = default);
     Task<List<AuditEvent>> GetAllAuditEventsAsync(CancellationToken ct = default);
