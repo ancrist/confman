@@ -43,9 +43,9 @@ public class RaftService : IRaftService
         _logger = logger;
     }
 
-    public bool IsLeader => _cluster.LeadershipToken.IsCancellationRequested == false &&
+    public bool IsLeader => !_cluster.LeadershipToken.IsCancellationRequested &&
                             _cluster.Leader?.EndPoint?.Equals(_cluster.Members
-                                .FirstOrDefault(m => m.IsRemote == false)?.EndPoint) == true;
+                                .FirstOrDefault(m => !m.IsRemote)?.EndPoint) == true;
 
     public Uri? LeaderUri
     {

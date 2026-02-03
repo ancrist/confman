@@ -20,15 +20,18 @@ public class ConfigController : ControllerBase
     private readonly IConfigStore _store;
     private readonly IRaftService _raft;
     private readonly ILogger<ConfigController> _logger;
+    private readonly bool _logConfigChanges;
 
     public ConfigController(
         IConfigStore store,
         IRaftService raft,
-        ILogger<ConfigController> logger)
+        ILogger<ConfigController> logger,
+        IConfiguration configuration)
     {
         _store = store;
         _raft = raft;
         _logger = logger;
+        _logConfigChanges = configuration.GetValue<bool>("Api:LogConfigChanges", false);
     }
 
     /// <summary>
@@ -98,7 +101,10 @@ public class ConfigController : ControllerBase
         }
 
         var author = User.FindFirstValue(ClaimTypes.Name) ?? "unknown";
-        _logger.LogInformation("Setting config {Namespace}/{Key} by {Author}", ns, key, author);
+        if (_logConfigChanges)
+        {
+            _logger.LogInformation("Setting config {Namespace}/{Key} by {Author}", ns, key, author);
+        }
 
         // Check if entry exists for response code
         var existing = await _store.GetAsync(ns, key, ct);
@@ -140,7 +146,10 @@ public class ConfigController : ControllerBase
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
-        _logger.LogInformation("Set config {Namespace}/{Key} complete ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
+        if (_logConfigChanges)
+        {
+            _logger.LogInformation("Set config {Namespace}/{Key} complete ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
+        }
 
         var dto = ConfigEntryDto.FromModel(entry);
 
@@ -174,7 +183,10 @@ public class ConfigController : ControllerBase
         }
 
         var author = User.FindFirstValue(ClaimTypes.Name) ?? "unknown";
-        _logger.LogInformation("Deleting config {Namespace}/{Key} by {Author}", ns, key, author);
+        if (_logConfigChanges)
+        {
+            _logger.LogInformation("Deleting config {Namespace}/{Key} by {Author}", ns, key, author);
+        }
 
         // Check if entry exists
         var existing = await _store.GetAsync(ns, key, ct);
@@ -203,7 +215,10 @@ public class ConfigController : ControllerBase
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
-        _logger.LogInformation("Delete config {Namespace}/{Key} complete ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
+        if (_logConfigChanges)
+        {
+            _logger.LogInformation("Delete config {Namespace}/{Key} complete ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
+        }
         return NoContent();
     }
 

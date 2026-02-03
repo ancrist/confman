@@ -16,10 +16,12 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
     private readonly ILiteCollection<Namespace> _namespaces;
     private readonly ILiteCollection<AuditEvent> _audit;
     private readonly ILogger<LiteDbConfigStore> _logger;
+    private readonly bool _logApplies;
 
     public LiteDbConfigStore(IConfiguration config, ILogger<LiteDbConfigStore> logger)
     {
         _logger = logger;
+        _logApplies = config.GetValue<bool>("Storage:LogApplies", false);
 
         var dataPath = config["Storage:DataPath"] ?? "./data";
         Directory.CreateDirectory(dataPath);
@@ -74,21 +76,30 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
     {
         var sw = Stopwatch.StartNew();
         var existing = _configs.FindOne(x => x.Namespace == entry.Namespace && x.Key == entry.Key);
+        var findMs = sw.ElapsedMilliseconds;
 
         if (existing is not null)
         {
             entry.Id = existing.Id;
             entry.Version = existing.Version + 1;
             _configs.Update(entry);
-            _logger.LogDebug("Updated config {Ns}/{Key} to version {Version} ({ElapsedMs} ms)",
-                entry.Namespace, entry.Key, entry.Version, sw.ElapsedMilliseconds);
+            if (_logApplies)
+                _logger.LogInformation("Updated config {Ns}/{Key} to version {Version} (find: {FindMs} ms, total: {ElapsedMs} ms)",
+                    entry.Namespace, entry.Key, entry.Version, findMs, sw.ElapsedMilliseconds);
+            else
+                _logger.LogDebug("Updated config {Ns}/{Key} to version {Version} (find: {FindMs} ms, total: {ElapsedMs} ms)",
+                    entry.Namespace, entry.Key, entry.Version, findMs, sw.ElapsedMilliseconds);
         }
         else
         {
             entry.Version = 1;
             _configs.Insert(entry);
-            _logger.LogDebug("Created config {Ns}/{Key} version {Version} ({ElapsedMs} ms)",
-                entry.Namespace, entry.Key, entry.Version, sw.ElapsedMilliseconds);
+            if (_logApplies)
+                _logger.LogInformation("Created config {Ns}/{Key} version {Version} (find: {FindMs} ms, total: {ElapsedMs} ms)",
+                    entry.Namespace, entry.Key, entry.Version, findMs, sw.ElapsedMilliseconds);
+            else
+                _logger.LogDebug("Created config {Ns}/{Key} version {Version} (find: {FindMs} ms, total: {ElapsedMs} ms)",
+                    entry.Namespace, entry.Key, entry.Version, findMs, sw.ElapsedMilliseconds);
         }
 
         return Task.CompletedTask;
@@ -98,7 +109,10 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
     {
         var sw = Stopwatch.StartNew();
         var deleted = _configs.DeleteMany(x => x.Namespace == ns && x.Key == key);
-        _logger.LogDebug("Deleted {Count} configs for {Ns}/{Key} ({ElapsedMs} ms)", deleted, ns, key, sw.ElapsedMilliseconds);
+        if (_logApplies)
+            _logger.LogInformation("Deleted {Count} configs for {Ns}/{Key} ({ElapsedMs} ms)", deleted, ns, key, sw.ElapsedMilliseconds);
+        else
+            _logger.LogDebug("Deleted {Count} configs for {Ns}/{Key} ({ElapsedMs} ms)", deleted, ns, key, sw.ElapsedMilliseconds);
         return Task.CompletedTask;
     }
 
@@ -128,12 +142,18 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
             ns.Id = existing.Id;
             ns.CreatedAt = existing.CreatedAt;
             _namespaces.Update(ns);
-            _logger.LogDebug("Updated namespace {Path} ({ElapsedMs} ms)", ns.Path, sw.ElapsedMilliseconds);
+            if (_logApplies)
+                _logger.LogInformation("Updated namespace {Path} ({ElapsedMs} ms)", ns.Path, sw.ElapsedMilliseconds);
+            else
+                _logger.LogDebug("Updated namespace {Path} ({ElapsedMs} ms)", ns.Path, sw.ElapsedMilliseconds);
         }
         else
         {
             _namespaces.Insert(ns);
-            _logger.LogDebug("Created namespace {Path} ({ElapsedMs} ms)", ns.Path, sw.ElapsedMilliseconds);
+            if (_logApplies)
+                _logger.LogInformation("Created namespace {Path} ({ElapsedMs} ms)", ns.Path, sw.ElapsedMilliseconds);
+            else
+                _logger.LogDebug("Created namespace {Path} ({ElapsedMs} ms)", ns.Path, sw.ElapsedMilliseconds);
         }
 
         return Task.CompletedTask;
@@ -145,11 +165,17 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
         var deletedConfigs = _configs.DeleteMany(x => x.Namespace == path);
         if (deletedConfigs > 0)
         {
-            _logger.LogDebug("Cascade deleted {Count} configs in namespace {Path}", deletedConfigs, path);
+            if (_logApplies)
+                _logger.LogInformation("Cascade deleted {Count} configs in namespace {Path}", deletedConfigs, path);
+            else
+                _logger.LogDebug("Cascade deleted {Count} configs in namespace {Path}", deletedConfigs, path);
         }
 
         var deleted = _namespaces.DeleteMany(x => x.Path == path);
-        _logger.LogDebug("Deleted {Count} namespaces for {Path}", deleted, path);
+        if (_logApplies)
+            _logger.LogInformation("Deleted {Count} namespaces for {Path}", deleted, path);
+        else
+            _logger.LogDebug("Deleted {Count} namespaces for {Path}", deleted, path);
         return Task.CompletedTask;
     }
 
@@ -162,8 +188,12 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
         var sw = Stopwatch.StartNew();
         // Use upsert for idempotency during log replay on all nodes
         _audit.Upsert(evt);
-        _logger.LogDebug("Upserted audit event: {Action} on {Ns}/{Key} ({ElapsedMs} ms)",
-            evt.Action, evt.Namespace, evt.Key, sw.ElapsedMilliseconds);
+        if (_logApplies)
+            _logger.LogInformation("Upserted audit event: {Action} on {Ns}/{Key} ({ElapsedMs} ms)",
+                evt.Action, evt.Namespace, evt.Key, sw.ElapsedMilliseconds);
+        else
+            _logger.LogDebug("Upserted audit event: {Action} on {Ns}/{Key} ({ElapsedMs} ms)",
+                evt.Action, evt.Namespace, evt.Key, sw.ElapsedMilliseconds);
         return Task.CompletedTask;
     }
 

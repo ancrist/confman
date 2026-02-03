@@ -1,0 +1,24 @@
+# EditorConfig for Confman
+root = true
+
+[*.cs]
+# Disable this. qualification requirement (IDE0009)
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+dotnet_style_qualification_for_event = false:suggestion
+
+# Allow single-line if statements without braces (IDE0011)
+csharp_prefer_braces = when_multiline:suggestion
+
+# File naming (SA1649) - relax to suggestion
+dotnet_diagnostic.SA1649.severity = suggestion
+
+# MD5 usage for non-crypto purposes (CA5351) - suppress
+dotnet_diagnostic.CA5351.severity = suggestion
+
+# Async blocking (CA1849) - relax to suggestion
+dotnet_diagnostic.CA1849.severity = suggestion
+
+# Blank line between statements (IDE2003)
+dotnet_diagnostic.IDE2003.severity = suggestion

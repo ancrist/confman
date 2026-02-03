@@ -14,8 +14,11 @@ namespace Confman.Api.Cluster;
 /// </summary>
 public sealed class ConfigStateMachine : SimpleStateMachine
 {
+    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
+
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ConfigStateMachine> _logger;
+    private readonly bool _logDataStoreApplies;
 
     /// <summary>
     /// Constructor for DI registration via UseStateMachine&lt;T&gt;().
@@ -25,6 +28,7 @@ public sealed class ConfigStateMachine : SimpleStateMachine
     {
         _serviceProvider = serviceProvider;
         _logger = loggerFactory.CreateLogger<ConfigStateMachine>();
+        _logDataStoreApplies = configuration.GetValue<bool>("Api:LogDataStoreApplies", false);
     }
 
     private static DirectoryInfo GetLogDirectory(IConfiguration configuration)
@@ -66,8 +70,16 @@ public sealed class ConfigStateMachine : SimpleStateMachine
             // Storage uses upsert for idempotency during log replay
             await command.ApplyAsync(store, token);
 
-            _logger.LogDebug("Applied {CommandType} at index {Index}, term {Term} ({ElapsedMs} ms)",
-                command.GetType().Name, entry.Index, entry.Term, sw.ElapsedMilliseconds);
+            if (_logDataStoreApplies)
+            {
+                _logger.LogInformation("Applied {CommandType} at index {Index}, term {Term} ({ElapsedMs} ms)",
+                    command.GetType().Name, entry.Index, entry.Term, sw.ElapsedMilliseconds);
+            }
+            else
+            {
+                _logger.LogDebug("Applied {CommandType} at index {Index}, term {Term} ({ElapsedMs} ms)",
+                    command.GetType().Name, entry.Index, entry.Term, sw.ElapsedMilliseconds);
+            }
 
             // Create snapshot every 100 entries for compaction
             return entry.Index % 100 == 0;
@@ -134,15 +146,12 @@ public sealed class ConfigStateMachine : SimpleStateMachine
             {
                 Version = 1,
                 Configs = await store.GetAllConfigsAsync(token),
-                Namespaces = (await store.ListNamespacesAsync(token)).ToList(),
+                Namespaces = [.. (await store.ListNamespacesAsync(token))],
                 AuditEvents = await store.GetAllAuditEventsAsync(token),
                 Timestamp = DateTimeOffset.UtcNow
             };
 
-            var json = JsonSerializer.SerializeToUtf8Bytes(snapshot, new JsonSerializerOptions
-            {
-                WriteIndented = false
-            });
+            var json = JsonSerializer.SerializeToUtf8Bytes(snapshot, SerializerOptions);
 
             await writer.Invoke(json, token);
 

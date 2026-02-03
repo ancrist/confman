@@ -18,6 +18,13 @@ try
 {
     var builder = WebApplication.CreateBuilder(args);
 
+    // Load node-specific configuration based on CONFMAN_NODE_ID environment variable
+    var nodeId = Environment.GetEnvironmentVariable("CONFMAN_NODE_ID");
+    if (!string.IsNullOrEmpty(nodeId))
+    {
+        builder.Configuration.AddJsonFile($"appsettings.{nodeId}.json", optional: true, reloadOnChange: true);
+    }
+
     // Get the URL this instance will listen on (for cluster identity)
     // Only set publicEndPoint if not already configured (allows command-line override)
     if (string.IsNullOrEmpty(builder.Configuration["publicEndPoint"]))
@@ -218,7 +225,7 @@ catch (Exception ex)
 }
 finally
 {
-    Log.CloseAndFlush();
+    await Log.CloseAndFlushAsync();
 }
 
 // Required for WebApplicationFactory testing
