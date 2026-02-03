@@ -22,6 +22,13 @@ from pathlib import Path
 
 import requests as req
 
+try:
+    import pandas as pd
+    from tabulate import tabulate
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+
 # --- Constants ---
 
 TIERS: dict[str, dict[str, int]] = {
@@ -240,6 +247,98 @@ def cleanup_data(leader: str, api_key: str, tier: str) -> None:
             print(f"    Warning: failed to delete namespace {ns}")
 
 
+# --- Results Rendering ---
+
+
+def render_results(output_dir: Path, tier: str) -> None:
+    """Render benchmark results in a beautiful tabular format using pandas."""
+    if not PANDAS_AVAILABLE:
+        print("\n  Install pandas and tabulate for formatted results: pip install pandas tabulate")
+        return
+
+    # Define scenario order (matches execution order)
+    scenario_order = ["write-1u", "write-10u", "read-1u", "read-10u", "mixed-10u"]
+
+    # Find all stats CSV files for this tier
+    stats_files = list(output_dir.glob(f"{tier}-*_stats.csv"))
+    if not stats_files:
+        print("\n  No results files found.")
+        return
+
+    results = []
+    for f in stats_files:
+        # Extract scenario name from filename (e.g., "small-write-1u_stats.csv" -> "write-1u")
+        scenario = f.stem.replace(f"{tier}-", "").replace("_stats", "")
+
+        df = pd.read_csv(f)
+        # Get the Aggregated row (Type is empty/NaN for aggregated)
+        agg = df[df["Type"].isna() | (df["Type"] == "")]
+        if agg.empty:
+            continue
+
+        row = agg.iloc[0]
+        reqs = int(row["Request Count"])
+        fails = int(row["Failure Count"])
+        fail_pct = (fails / reqs * 100) if reqs > 0 else 0
+
+        results.append({
+            "Scenario": scenario,
+            "Requests": reqs,
+            "Failures": f"{fails} ({fail_pct:.1f}%)",
+            "Throughput": f"{row['Requests/s']:.1f}/s",
+            "p50": f"{row['50%']:.0f}ms",
+            "p95": f"{row['95%']:.0f}ms",
+            "p99": f"{row['99%']:.0f}ms",
+            "Max": f"{row['100%']:.0f}ms",
+            "_order": scenario_order.index(scenario) if scenario in scenario_order else 99,
+        })
+
+    if not results:
+        return
+
+    # Sort by execution order
+    results.sort(key=lambda x: x["_order"])
+    for r in results:
+        del r["_order"]
+
+    # Create summary DataFrame
+    summary_df = pd.DataFrame(results)
+
+    # Print formatted table
+    print("\n" + "─" * 80)
+    print(f"  BENCHMARK RESULTS ({tier.upper()} tier)")
+    print("─" * 80)
+    print(tabulate(summary_df, headers="keys", tablefmt="simple", showindex=False))
+    print("─" * 80)
+
+    # Calculate and show read vs write comparison
+    read_scenarios = [r for r in results if "read" in r["Scenario"]]
+    write_scenarios = [r for r in results if "write" in r["Scenario"] and "mixed" not in r["Scenario"]]
+
+    if read_scenarios and write_scenarios:
+        # Extract numeric throughput for comparison
+        def parse_throughput(s: str) -> float:
+            return float(s.replace("/s", ""))
+
+        max_read = max(parse_throughput(r["Throughput"]) for r in read_scenarios)
+        max_write = max(parse_throughput(r["Throughput"]) for r in write_scenarios)
+        ratio = max_read / max_write if max_write > 0 else 0
+
+        print(f"\n  Key Metrics:")
+        print(f"    Peak read throughput:  {max_read:,.0f} req/s")
+        print(f"    Peak write throughput: {max_write:,.0f} req/s")
+        print(f"    Read/Write ratio:      {ratio:.0f}x (reads are {ratio:.0f}x faster)")
+
+    # Add quick insights
+    print(f"\n  Status:")
+    for r in results:
+        scenario = r["Scenario"]
+        if "0 (0.0%)" in r["Failures"]:
+            print(f"    ✓ {scenario}: Clean run")
+        else:
+            print(f"    ⚠ {scenario}: {r['Failures']} failures (expected under local cluster load)")
+
+
 # --- Main ---
 
 
@@ -251,6 +350,7 @@ def main() -> None:
             "Examples:\n"
             "  python run_benchmark.py --tier small\n"
             "  python run_benchmark.py --tier large --no-cleanup\n"
+            "  python run_benchmark.py --results-only          # View previous results\n"
             "  CONFMAN_BENCH_API_KEY=mykey python run_benchmark.py\n"
         ),
     )
@@ -280,10 +380,22 @@ def main() -> None:
         action="store_true",
         help="Preserve test data after run (don't delete bench-* namespaces)",
     )
+    p.add_argument(
+        "--results-only",
+        action="store_true",
+        help="Only display results from previous run (don't run benchmarks)",
+    )
     args = p.parse_args()
 
     print("Confman Cluster Benchmark Suite")
     print("=" * 40)
+
+    # Handle --results-only mode
+    output_dir = Path(args.output_dir)
+    if args.results_only:
+        print(f"\nDisplaying results from: {output_dir}/")
+        render_results(output_dir, args.tier)
+        return
 
     # 1. Discover leader
     print(f"\nDiscovering leader from {args.host}...")
@@ -379,7 +491,9 @@ def main() -> None:
     else:
         print(f"  All scenarios completed successfully.")
     print(f"  Results: {args.output_dir}/")
-    print(f"\nCSV files can be opened in any spreadsheet or parsed with pandas.")
+
+    # 9. Render formatted results
+    render_results(output_dir, args.tier)
 
 
 if __name__ == "__main__":

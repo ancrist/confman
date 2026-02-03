@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using Confman.Api.Cluster;
 using Confman.Api.Cluster.Commands;
@@ -88,6 +89,8 @@ public class ConfigController : ControllerBase
         [FromBody] SetConfigRequest request,
         CancellationToken ct)
     {
+        var sw = Stopwatch.StartNew();
+
         // Forward to leader if we're not the leader
         if (!_raft.IsLeader)
         {
@@ -112,6 +115,7 @@ public class ConfigController : ControllerBase
         var replicated = await _raft.ReplicateAsync(command, ct);
         if (!replicated)
         {
+            _logger.LogWarning("Set config {Namespace}/{Key} failed replication ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
             return Problem(
                 title: "Replication failed",
                 detail: "The configuration change could not be replicated to the cluster",
@@ -129,11 +133,14 @@ public class ConfigController : ControllerBase
 
         if (entry is null)
         {
+            _logger.LogWarning("Set config {Namespace}/{Key} apply pending ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
             return Problem(
                 title: "Apply pending",
                 detail: "The change was replicated but not yet applied. Retry the read.",
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
+
+        _logger.LogInformation("Set config {Namespace}/{Key} complete ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
 
         var dto = ConfigEntryDto.FromModel(entry);
 
@@ -158,6 +165,8 @@ public class ConfigController : ControllerBase
         string key,
         CancellationToken ct)
     {
+        var sw = Stopwatch.StartNew();
+
         // Forward to leader if we're not the leader
         if (!_raft.IsLeader)
         {
@@ -187,12 +196,14 @@ public class ConfigController : ControllerBase
         var replicated = await _raft.ReplicateAsync(command, ct);
         if (!replicated)
         {
+            _logger.LogWarning("Delete config {Namespace}/{Key} failed replication ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
             return Problem(
                 title: "Replication failed",
                 detail: "The configuration change could not be replicated to the cluster",
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
+        _logger.LogInformation("Delete config {Namespace}/{Key} complete ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
         return NoContent();
     }
 

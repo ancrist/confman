@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Confman.Api.Cluster.Commands;
 using DotNext.IO;
@@ -72,6 +73,7 @@ public class RaftService : IRaftService
             return false;
         }
 
+        var sw = Stopwatch.StartNew();
         try
         {
             // Serialize the command to bytes
@@ -90,8 +92,8 @@ public class RaftService : IRaftService
 
             var result = await _cluster.ReplicateAsync(entry, timeoutCts.Token);
 
-            _logger.LogDebug("Command replicated: {CommandType}, result: {Result}",
-                command.GetType().Name, result);
+            _logger.LogDebug("Command replicated: {CommandType}, result: {Result} ({ElapsedMs} ms)",
+                command.GetType().Name, result, sw.ElapsedMilliseconds);
 
             return result;
         }
