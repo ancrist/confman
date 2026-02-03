@@ -47,13 +47,19 @@ public sealed class ConfigStateMachine : SimpleStateMachine
     {
         if (!entry.TryGetPayload(out var payload))
         {
-            _logger.LogDebug("Skipping entry at index {Index} - no payload", entry.Index);
+            _logger.LogDebug("No payload for log entry at index {Index}", entry.Index);
             return false;
         }
 
         var sw = Stopwatch.StartNew();
         try
         {
+            // DEBUG: Log raw payload details
+            var payloadBytes = payload.ToArray();
+            var firstBytes = payloadBytes.Length > 10 ? payloadBytes[..10] : payloadBytes;
+            _logger.LogDebug("Entry {Index}: payload length={Length}, first bytes: {Bytes}",
+                entry.Index, payloadBytes.Length, BitConverter.ToString(firstBytes));
+
             var command = DeserializeCommand(payload);
 
             // Skip Raft internal entries (no-ops, config changes)
@@ -81,8 +87,11 @@ public sealed class ConfigStateMachine : SimpleStateMachine
                     command.GetType().Name, entry.Index, entry.Term, sw.ElapsedMilliseconds);
             }
 
-            // Create snapshot every 100 entries for compaction
-            return entry.Index % 100 == 0;
+            // DISABLED: Snapshot creation has a race condition where entries can be
+            // committed to WAL but not yet applied to LiteDB when snapshot is taken.
+            // This causes data loss when WAL is compacted after snapshot.
+            // TODO: Fix by tracking actual applied state vs relying on entry index.
+            return false;
         }
         catch (Exception ex)
         {
@@ -165,18 +174,54 @@ public sealed class ConfigStateMachine : SimpleStateMachine
         }
     }
 
-    private static ICommand? DeserializeCommand(in ReadOnlySequence<byte> payload)
+    private ICommand? DeserializeCommand(in ReadOnlySequence<byte> payload)
     {
-        // Skip non-JSON payloads (Raft no-op entries, config changes, etc.)
-        // Valid JSON commands start with '{' (0x7B)
+        // Skip empty payloads
         if (payload.IsEmpty)
             return null;
 
-        var firstByte = payload.FirstSpan[0];
-        if (firstByte != (byte)'{')
+        var bytes = payload.ToArray();
+
+        // Find the start of JSON - skip any leading null bytes
+        // DotNext's SimpleStateMachine WAL sometimes prepends null bytes to payloads
+        var jsonStart = 0;
+        while (jsonStart < bytes.Length && bytes[jsonStart] == 0)
+        {
+            jsonStart++;
+        }
+
+        // If all null bytes or empty, skip
+        if (jsonStart >= bytes.Length)
             return null;
 
-        var reader = new Utf8JsonReader(payload);
-        return JsonSerializer.Deserialize<ICommand>(ref reader);
+        // Check if the remaining content starts with '{' (JSON object)
+        if (bytes[jsonStart] != (byte)'{')
+        {
+            // Genuine Raft internal entry (config change, etc.)
+            _logger.LogDebug("Skipping non-JSON entry, firstByte=0x{FirstByte:X2} at offset {Offset}",
+                bytes[jsonStart], jsonStart);
+            return null;
+        }
+
+        // If we had to skip null bytes, log it (this is a known DotNext WAL behavior)
+        if (jsonStart > 0)
+        {
+            _logger.LogWarning("Skipped {NullBytes} null bytes before JSON in log entry (DotNext WAL padding)",
+                jsonStart);
+        }
+
+        try
+        {
+            // Deserialize from the actual JSON start
+            var jsonSpan = bytes.AsSpan(jsonStart);
+            return JsonSerializer.Deserialize<ICommand>(jsonSpan);
+        }
+        catch (JsonException ex)
+        {
+            var jsonString = System.Text.Encoding.UTF8.GetString(bytes, jsonStart, bytes.Length - jsonStart);
+            _logger.LogWarning(ex, "JSON deserialization failed. Payload ({Length} bytes): {Payload}",
+                bytes.Length - jsonStart, jsonString.Length > 500 ? jsonString[..500] + "..." : jsonString);
+            return null;
+        }
     }
 }
