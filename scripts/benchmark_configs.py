@@ -23,6 +23,9 @@ Usage:
     # Read as fast as possible (no rate limiting)
     python benchmark_configs.py read --count 1000 --unlimited
 
+    # Read with 10 concurrent requests (high throughput)
+    python benchmark_configs.py read --count 1000 --concurrency 10 --any-node
+
     # Read with specific keys (random selection from provided list)
     python benchmark_configs.py read -r 100 -c 500 -n my-namespace --keys config-00000,config-00001
 
@@ -35,7 +38,9 @@ import random
 import requests
 import time
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from threading import Lock
 from typing import Optional, List
 
 # ANSI color codes
@@ -435,10 +440,11 @@ def run_write_benchmark(leader_url: str, namespace: str, count: int, rate: float
 
 def run_read_benchmark(target_urls: List[str], namespace: Optional[str], count: int, rate: float,
                        api_key: str, keys: Optional[List[str]] = None, seed: Optional[int] = None,
-                       unlimited: bool = False):
+                       unlimited: bool = False, concurrency: int = 1):
     """Run read benchmark reading configs at the specified rate with random key selection.
 
     target_urls can be a single URL or multiple URLs for round-robin distribution.
+    concurrency controls how many requests are in-flight simultaneously.
     """
     delay = 0 if unlimited else (1.0 / rate)
 
@@ -450,9 +456,10 @@ def run_read_benchmark(target_urls: List[str], namespace: Optional[str], count: 
     else:
         target_display = f"{len(target_urls)} nodes (round-robin)"
 
-    if unlimited:
+    if unlimited or concurrency > 1:
         print(f"\n{'='*60}")
-        print(f"Confman Benchmark - {Colors.CYAN}READ{Colors.RESET} (UNLIMITED)")
+        mode_label = "CONCURRENT" if concurrency > 1 else "UNLIMITED"
+        print(f"Confman Benchmark - {Colors.CYAN}READ{Colors.RESET} ({mode_label})")
         print(f"{'='*60}")
         print(f"Target:      {target_display}")
         if len(target_urls) > 1:
@@ -460,7 +467,8 @@ def run_read_benchmark(target_urls: List[str], namespace: Optional[str], count: 
                 print(f"             - {url}")
         print(f"Namespace:   {display_namespace}")
         print(f"Config count: {count}")
-        print(f"Rate:        {Colors.YELLOW}UNLIMITED (as fast as possible){Colors.RESET}")
+        if concurrency > 1:
+            print(f"Concurrency: {Colors.YELLOW}{concurrency} parallel requests{Colors.RESET}")
         print(f"{'='*60}\n")
     else:
         print_header("read", target_display, display_namespace, count, rate)
@@ -507,52 +515,89 @@ def run_read_benchmark(target_urls: List[str], namespace: Optional[str], count: 
     else:
         print("Using random key selection (no seed)")
 
-    print(f"Issuing {count} random GET requests at {rate} req/s...\n")
+    if concurrency > 1:
+        print(f"Issuing {count} random GET requests with {concurrency} concurrent workers...\n")
+    else:
+        print(f"Issuing {count} random GET requests at {rate} req/s...\n")
 
     successes = 0
     failures = 0
     latencies = []
+    completed = 0
+    print_lock = Lock()
+
+    # Pre-generate all requests (config selection + target URL assignment)
+    requests_to_make = []
+    for i in range(count):
+        config = random.choice(config_list)
+        target_url = target_urls[i % len(target_urls)]
+        requests_to_make.append((i, target_url, config["namespace"], config["key"]))
+
+    def execute_read(args):
+        """Execute a single read request."""
+        idx, url, ns, key = args
+        return idx, read_config(url, ns, key, api_key)
 
     start_time = time.perf_counter()
 
-    for i in range(count):
-        # Randomly select a config from the list
-        config = random.choice(config_list)
-        cfg_namespace = config["namespace"]
-        cfg_key = config["key"]
+    if concurrency > 1:
+        # Concurrent execution with ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = {executor.submit(execute_read, req): req for req in requests_to_make}
 
-        # Round-robin across target URLs
-        target_url = target_urls[i % len(target_urls)]
+            for future in as_completed(futures):
+                idx, result = future.result()
+                latencies.append(result["latency_ms"])
 
-        result = read_config(target_url, cfg_namespace, cfg_key, api_key)
-        latencies.append(result["latency_ms"])
+                with print_lock:
+                    completed += 1
+                    if result["success"]:
+                        successes += 1
+                        status = f"{Colors.GREEN}✓{Colors.RESET}"
+                        http_status = f"{Colors.GREEN}HTTP {result['status_code']}{Colors.RESET}"
+                        value_preview = str(result['value'])[:30] if result['value'] else '<empty>'
+                    else:
+                        failures += 1
+                        status = f"{Colors.RED}✗{Colors.RESET}"
+                        http_status = f"{Colors.RED}HTTP {result['status_code']}{Colors.RESET}"
+                        value_preview = result.get('error', 'failed')[:30]
 
-        if result["success"]:
-            successes += 1
-            status = f"{Colors.GREEN}✓{Colors.RESET}"
-            http_status = f"{Colors.GREEN}HTTP {result['status_code']}{Colors.RESET}"
-            value_preview = str(result['value'])[:30] if result['value'] else '<empty>'
-        else:
-            failures += 1
-            status = f"{Colors.RED}✗{Colors.RESET}"
-            http_status = f"{Colors.RED}HTTP {result['status_code']}{Colors.RESET}"
-            value_preview = result.get('error', 'failed')[:30]
+                    # Print progress every 100 requests
+                    if completed % 100 == 0 or completed == 1 or completed == count:
+                        print(f"  [{completed:4d}/{count}] {status} GET {result['path']} | value={value_preview}... | {http_status} | {result['latency_ms']:.1f}ms")
+    else:
+        # Sequential execution (original behavior)
+        for i, target_url, cfg_namespace, cfg_key in requests_to_make:
+            result = read_config(target_url, cfg_namespace, cfg_key, api_key)
+            latencies.append(result["latency_ms"])
 
-        # Print every 100th request (or first/last) to avoid console spam
-        if (i + 1) % 100 == 0 or i == 0 or i == count - 1:
-            print(f"  [{i+1:4d}/{count}] {status} GET {result['path']} | value={value_preview}... | {http_status} | {result['latency_ms']:.1f}ms")
+            if result["success"]:
+                successes += 1
+                status = f"{Colors.GREEN}✓{Colors.RESET}"
+                http_status = f"{Colors.GREEN}HTTP {result['status_code']}{Colors.RESET}"
+                value_preview = str(result['value'])[:30] if result['value'] else '<empty>'
+            else:
+                failures += 1
+                status = f"{Colors.RED}✗{Colors.RESET}"
+                http_status = f"{Colors.RED}HTTP {result['status_code']}{Colors.RESET}"
+                value_preview = result.get('error', 'failed')[:30]
 
-        # Sleep to maintain rate (except for last iteration, or if unlimited)
-        if not unlimited and i < count - 1:
-            time.sleep(delay)
+            # Print every 100th request (or first/last) to avoid console spam
+            if (i + 1) % 100 == 0 or i == 0 or i == count - 1:
+                print(f"  [{i+1:4d}/{count}] {status} GET {result['path']} | value={value_preview}... | {http_status} | {result['latency_ms']:.1f}ms")
+
+            # Sleep to maintain rate (except for last iteration, or if unlimited)
+            if not unlimited and i < count - 1:
+                time.sleep(delay)
 
     total_time = time.perf_counter() - start_time
 
-    # For unlimited mode, show actual achieved rate
-    if unlimited:
+    # For unlimited/concurrent mode, show actual achieved rate
+    if unlimited or concurrency > 1:
         actual_rate = count / total_time
         print(f"\n{'='*60}")
-        print(f"Results - READ (UNLIMITED)")
+        mode_label = f"CONCURRENT x{concurrency}" if concurrency > 1 else "UNLIMITED"
+        print(f"Results - READ ({mode_label})")
         print(f"{'='*60}")
         print(f"Total time:    {total_time:.2f}s")
         print(f"Successes:     {successes}")
@@ -665,6 +710,12 @@ def main():
         action="store_true",
         help="Read from any healthy node, not just leader (for read scaling tests)"
     )
+    read_parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="Number of concurrent requests (default: 1 = sequential)"
+    )
 
     args = parser.parse_args()
 
@@ -735,10 +786,11 @@ def main():
         # Get seed if provided
         seed = getattr(args, 'seed', None)
 
-        # Check if unlimited mode
+        # Check if unlimited mode and concurrency
         unlimited = getattr(args, 'unlimited', False)
+        concurrency = getattr(args, 'concurrency', 1)
 
-        run_read_benchmark(target_urls, args.namespace, args.count, args.rate, args.api_key, keys, seed, unlimited)
+        run_read_benchmark(target_urls, args.namespace, args.count, args.rate, args.api_key, keys, seed, unlimited, concurrency)
 
 
 if __name__ == "__main__":
