@@ -33,7 +33,7 @@ except ImportError:
 
 TIERS: dict[str, dict[str, int]] = {
     "small": {"namespaces": 5, "keys_per_ns": 20, "payload_size": 1024},       # 1 KB, 100 entries
-    "large": {"namespaces": 10, "keys_per_ns": 50, "payload_size": 10240},     # 100 KB, 500 entries
+    "large": {"namespaces": 10, "keys_per_ns": 50, "payload_size": 10240},    # 10 KB, 500 entries
 }
 CLUSTER_PORTS = [6100, 6200, 6300]
 LOCUSTFILES_DIR = Path(__file__).parent / "locustfiles"
@@ -173,10 +173,7 @@ def seed_data(
                     failed += 1
             except req.RequestException:
                 failed += 1
-            # Throttle seeding to avoid overwhelming Raft consensus.
-            # Each write requires propose → replicate → commit → apply,
-            # and generates an audit event (doubling Raft log entries).
-            time.sleep(0.1)
+            # Progress update every 50 entries
             if (created + failed) % 50 == 0:
                 print(f"    {created + failed}/{total_entries} attempted, {created} created, {failed} failed...")
 
