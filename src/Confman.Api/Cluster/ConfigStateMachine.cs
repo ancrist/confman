@@ -19,6 +19,9 @@ public sealed class ConfigStateMachine : SimpleStateMachine
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ConfigStateMachine> _logger;
     private readonly bool _logDataStoreApplies;
+    private readonly bool _auditEnabled;
+    private readonly int _snapshotInterval;
+    private long _entriesSinceSnapshot;
 
     /// <summary>
     /// Constructor for DI registration via UseStateMachine&lt;T&gt;().
@@ -29,6 +32,10 @@ public sealed class ConfigStateMachine : SimpleStateMachine
         _serviceProvider = serviceProvider;
         _logger = loggerFactory.CreateLogger<ConfigStateMachine>();
         _logDataStoreApplies = configuration.GetValue<bool>("Api:LogDataStoreApplies", false);
+        _auditEnabled = configuration.GetValue<bool>("Audit:Enabled", true);
+        _snapshotInterval = configuration.GetValue<int>("Raft:SnapshotInterval", 1000);
+        _logger.LogInformation("ConfigStateMachine initialized: snapshot interval={Interval}, audit={AuditEnabled}",
+            _snapshotInterval, _auditEnabled);
     }
 
     private static DirectoryInfo GetLogDirectory(IConfiguration configuration)
@@ -54,12 +61,6 @@ public sealed class ConfigStateMachine : SimpleStateMachine
         var sw = Stopwatch.StartNew();
         try
         {
-            // DEBUG: Log raw payload details
-            var payloadBytes = payload.ToArray();
-            var firstBytes = payloadBytes.Length > 10 ? payloadBytes[..10] : payloadBytes;
-            _logger.LogDebug("Entry {Index}: payload length={Length}, first bytes: {Bytes}",
-                entry.Index, payloadBytes.Length, BitConverter.ToString(firstBytes));
-
             var command = DeserializeCommand(payload);
 
             // Skip Raft internal entries (no-ops, config changes)
@@ -74,7 +75,7 @@ public sealed class ConfigStateMachine : SimpleStateMachine
 
             // Apply command on all nodes - audit events created everywhere
             // Storage uses upsert for idempotency during log replay
-            await command.ApplyAsync(store, token);
+            await command.ApplyAsync(store, _auditEnabled, token);
 
             if (_logDataStoreApplies)
             {
@@ -87,10 +88,17 @@ public sealed class ConfigStateMachine : SimpleStateMachine
                     command.GetType().Name, entry.Index, entry.Term, sw.ElapsedMilliseconds);
             }
 
-            // DISABLED: Snapshot creation has a race condition where entries can be
-            // committed to WAL but not yet applied to LiteDB when snapshot is taken.
-            // This causes data loss when WAL is compacted after snapshot.
-            // TODO: Fix by tracking actual applied state vs relying on entry index.
+            // Trigger snapshot after every N command entries to compact WAL
+            // We await command.ApplyAsync above, so LiteDB state is guaranteed persisted
+            _entriesSinceSnapshot++;
+            if (_entriesSinceSnapshot >= _snapshotInterval)
+            {
+                _logger.LogInformation("Triggering snapshot after {Count} entries (index {Index})",
+                    _entriesSinceSnapshot, entry.Index);
+                _entriesSinceSnapshot = 0;
+                return true;
+            }
+
             return false;
         }
         catch (Exception ex)
@@ -182,45 +190,23 @@ public sealed class ConfigStateMachine : SimpleStateMachine
 
         var bytes = payload.ToArray();
 
-        // Find the start of JSON - skip any leading null bytes
-        // DotNext's SimpleStateMachine WAL sometimes prepends null bytes to payloads
-        var jsonStart = 0;
-        while (jsonStart < bytes.Length && bytes[jsonStart] == 0)
+        // Skip non-JSON entries (Raft internal entries like config changes)
+        if (bytes.Length == 0 || bytes[0] != (byte)'{')
         {
-            jsonStart++;
-        }
-
-        // If all null bytes or empty, skip
-        if (jsonStart >= bytes.Length)
+            _logger.LogDebug("Skipping non-JSON entry, firstByte=0x{FirstByte:X2}",
+                bytes.Length > 0 ? bytes[0] : 0);
             return null;
-
-        // Check if the remaining content starts with '{' (JSON object)
-        if (bytes[jsonStart] != (byte)'{')
-        {
-            // Genuine Raft internal entry (config change, etc.)
-            _logger.LogDebug("Skipping non-JSON entry, firstByte=0x{FirstByte:X2} at offset {Offset}",
-                bytes[jsonStart], jsonStart);
-            return null;
-        }
-
-        // If we had to skip null bytes, log it (this is a known DotNext WAL behavior)
-        if (jsonStart > 0)
-        {
-            _logger.LogWarning("Skipped {NullBytes} null bytes before JSON in log entry (DotNext WAL padding)",
-                jsonStart);
         }
 
         try
         {
-            // Deserialize from the actual JSON start
-            var jsonSpan = bytes.AsSpan(jsonStart);
-            return JsonSerializer.Deserialize<ICommand>(jsonSpan);
+            return JsonSerializer.Deserialize<ICommand>(bytes);
         }
         catch (JsonException ex)
         {
-            var jsonString = System.Text.Encoding.UTF8.GetString(bytes, jsonStart, bytes.Length - jsonStart);
+            var jsonString = System.Text.Encoding.UTF8.GetString(bytes);
             _logger.LogWarning(ex, "JSON deserialization failed. Payload ({Length} bytes): {Payload}",
-                bytes.Length - jsonStart, jsonString.Length > 500 ? jsonString[..500] + "..." : jsonString);
+                bytes.Length, jsonString.Length > 500 ? jsonString[..500] + "..." : jsonString);
             return null;
         }
     }

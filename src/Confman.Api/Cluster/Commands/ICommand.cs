@@ -19,6 +19,7 @@ public interface ICommand
     /// Creates audit events on all nodes - the store handles idempotency via upsert.
     /// </summary>
     /// <param name="store">The config store to apply changes to.</param>
+    /// <param name="auditEnabled">Whether to create audit events.</param>
     /// <param name="ct">Cancellation token.</param>
-    Task ApplyAsync(IConfigStore store, CancellationToken ct = default);
+    Task ApplyAsync(IConfigStore store, bool auditEnabled = true, CancellationToken ct = default);
 }

@@ -17,11 +17,16 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
     private readonly ILiteCollection<AuditEvent> _audit;
     private readonly ILogger<LiteDbConfigStore> _logger;
     private readonly bool _logApplies;
+    private readonly bool _auditEnabled;
 
     public LiteDbConfigStore(IConfiguration config, ILogger<LiteDbConfigStore> logger)
     {
         _logger = logger;
         _logApplies = config.GetValue<bool>("Storage:LogApplies", false);
+        _auditEnabled = config.GetValue<bool>("Audit:Enabled", true);
+
+        if (!_auditEnabled)
+            _logger.LogWarning("Audit logging is DISABLED - no audit events will be persisted");
 
         var dataPath = config["Storage:DataPath"] ?? "./data";
         Directory.CreateDirectory(dataPath);
@@ -78,28 +83,34 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
         var existing = _configs.FindOne(x => x.Namespace == entry.Namespace && x.Key == entry.Key);
         var findMs = sw.ElapsedMilliseconds;
 
-        if (existing is not null)
+        _db.BeginTrans();
+        try
         {
-            entry.Id = existing.Id;
-            entry.Version = existing.Version + 1;
-            _configs.Update(entry);
+            if (existing is not null)
+            {
+                entry.Id = existing.Id;
+                entry.Version = existing.Version + 1;
+                _configs.Update(entry);
+            }
+            else
+            {
+                entry.Version = 1;
+                _configs.Insert(entry);
+            }
+
+            _db.Commit();
+
             if (_logApplies)
-                _logger.LogInformation("Updated config {Ns}/{Key} to version {Version} (find: {FindMs} ms, total: {ElapsedMs} ms)",
+                _logger.LogInformation("Set config {Ns}/{Key} v{Version} (find: {FindMs} ms, total: {ElapsedMs} ms)",
                     entry.Namespace, entry.Key, entry.Version, findMs, sw.ElapsedMilliseconds);
             else
-                _logger.LogDebug("Updated config {Ns}/{Key} to version {Version} (find: {FindMs} ms, total: {ElapsedMs} ms)",
+                _logger.LogDebug("Set config {Ns}/{Key} v{Version} (find: {FindMs} ms, total: {ElapsedMs} ms)",
                     entry.Namespace, entry.Key, entry.Version, findMs, sw.ElapsedMilliseconds);
         }
-        else
+        catch
         {
-            entry.Version = 1;
-            _configs.Insert(entry);
-            if (_logApplies)
-                _logger.LogInformation("Created config {Ns}/{Key} version {Version} (find: {FindMs} ms, total: {ElapsedMs} ms)",
-                    entry.Namespace, entry.Key, entry.Version, findMs, sw.ElapsedMilliseconds);
-            else
-                _logger.LogDebug("Created config {Ns}/{Key} version {Version} (find: {FindMs} ms, total: {ElapsedMs} ms)",
-                    entry.Namespace, entry.Key, entry.Version, findMs, sw.ElapsedMilliseconds);
+            _db.Rollback();
+            throw;
         }
 
         return Task.CompletedTask;
@@ -185,6 +196,9 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
 
     public Task AppendAuditAsync(AuditEvent evt, CancellationToken ct = default)
     {
+        if (!_auditEnabled)
+            return Task.CompletedTask;
+
         var sw = Stopwatch.StartNew();
         // Use upsert for idempotency during log replay on all nodes
         _audit.Upsert(evt);
@@ -233,18 +247,20 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
                 _configs.Insert(entry);
             }
 
-            _audit.Upsert(audit);
+            if (_auditEnabled)
+                _audit.Upsert(audit);
+
             _db.Commit();
 
             if (_logApplies)
             {
-                _logger.LogInformation("Set config {Ns}/{Key} v{Version} + audit (find: {FindMs} ms, total: {ElapsedMs} ms)",
-                    entry.Namespace, entry.Key, entry.Version, findMs, sw.ElapsedMilliseconds);
+                _logger.LogInformation("Set config {Ns}/{Key} v{Version}{AuditStatus} (find: {FindMs} ms, total: {ElapsedMs} ms)",
+                    entry.Namespace, entry.Key, entry.Version, _auditEnabled ? " + audit" : "", findMs, sw.ElapsedMilliseconds);
             }
             else
             {
-                _logger.LogDebug("Set config {Ns}/{Key} v{Version} + audit (find: {FindMs} ms, total: {ElapsedMs} ms)",
-                    entry.Namespace, entry.Key, entry.Version, findMs, sw.ElapsedMilliseconds);
+                _logger.LogDebug("Set config {Ns}/{Key} v{Version}{AuditStatus} (find: {FindMs} ms, total: {ElapsedMs} ms)",
+                    entry.Namespace, entry.Key, entry.Version, _auditEnabled ? " + audit" : "", findMs, sw.ElapsedMilliseconds);
             }
         }
         catch

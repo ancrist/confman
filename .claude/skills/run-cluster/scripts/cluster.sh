@@ -29,7 +29,7 @@ start_cluster() {
 
     # Build once upfront to avoid DLL lock contention between nodes
     echo "  Building project..."
-    dotnet build "${REPO_ROOT}/${PROJECT}" -q 2>&1 || {
+    dotnet build "${REPO_ROOT}/${PROJECT}" -c Release -q 2>&1 || {
         echo "ERROR: Build failed. Check build output above."
         return 1
     }
@@ -47,7 +47,7 @@ start_cluster() {
         echo "  Starting ${node} on port ${port}..."
         ASPNETCORE_ENVIRONMENT="${node}" \
             nohup dotnet run --project "${REPO_ROOT}/${PROJECT}" \
-                --no-build --no-launch-profile \
+                -c Release --no-build --no-launch-profile \
                 --urls "http://127.0.0.1:${port}" \
                 > "${log_file}" 2>&1 &
     done

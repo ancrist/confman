@@ -15,11 +15,8 @@ public sealed record SetConfigCommand : ICommand
     public required string Author { get; init; }
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
-    public async Task ApplyAsync(IConfigStore store, CancellationToken ct = default)
+    public async Task ApplyAsync(IConfigStore store, bool auditEnabled = true, CancellationToken ct = default)
     {
-        // Get existing entry to capture old value for audit
-        var existing = await store.GetAsync(Namespace, Key, ct);
-
         var entry = new ConfigEntry
         {
             Namespace = Namespace,
@@ -30,21 +27,32 @@ public sealed record SetConfigCommand : ICommand
             UpdatedBy = Author
         };
 
-        // Create audit event
-        var action = existing is null ? AuditAction.ConfigCreated : AuditAction.ConfigUpdated;
-        var audit = new AuditEvent
+        if (auditEnabled)
         {
-            Id = AuditIdGenerator.Generate(Timestamp, Namespace, Key, action),
-            Timestamp = Timestamp,
-            Action = action,
-            Actor = Author,
-            Namespace = Namespace,
-            Key = Key,
-            OldValue = existing?.Value,
-            NewValue = Value
-        };
+            // Get existing entry to capture old value for audit
+            var existing = await store.GetAsync(Namespace, Key, ct);
 
-        // Batched write - single transaction, single fsync
-        await store.SetWithAuditAsync(entry, audit, ct);
+            // Create audit event
+            var action = existing is null ? AuditAction.ConfigCreated : AuditAction.ConfigUpdated;
+            var audit = new AuditEvent
+            {
+                Id = AuditIdGenerator.Generate(Timestamp, Namespace, Key, action),
+                Timestamp = Timestamp,
+                Action = action,
+                Actor = Author,
+                Namespace = Namespace,
+                Key = Key,
+                OldValue = existing?.Value,
+                NewValue = Value
+            };
+
+            // Batched write - single transaction, single fsync
+            await store.SetWithAuditAsync(entry, audit, ct);
+        }
+        else
+        {
+            // Direct write without audit overhead
+            await store.SetAsync(entry, ct);
+        }
     }
 }

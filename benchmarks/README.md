@@ -50,10 +50,12 @@ The wrapper auto-discovers the cluster leader via `/health/ready` and seeds test
 
 ## Tiers
 
-| Tier | Namespaces | Keys/NS | Total Entries | Payload |
-|------|------------|---------|---------------|---------|
-| small | 5 | 20 | 100 | 1 KB |
-| large | 20 | 50 | 1,000 | 1 KB |
+| Tier | Namespaces | Keys/NS | Total Entries | Payload | Total Data |
+|------|------------|---------|---------------|---------|------------|
+| small | 5 | 20 | 100 | 1 KB | ~100 KB |
+| large | 10 | 50 | 500 | 10 KB | ~5 MB |
+
+**Note:** Running all 3 nodes on a single machine limits resources. The large tier is sized to avoid file handle exhaustion and memory pressure on local dev clusters.
 
 ## Known Limitations
 

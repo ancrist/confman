@@ -14,9 +14,9 @@ public sealed record SetNamespaceCommand : ICommand
     public required string Author { get; init; }
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
-    public async Task ApplyAsync(IConfigStore store, CancellationToken ct = default)
+    public async Task ApplyAsync(IConfigStore store, bool auditEnabled = true, CancellationToken ct = default)
     {
-        var existing = await store.GetNamespaceAsync(Path, ct);
+        var existing = auditEnabled ? await store.GetNamespaceAsync(Path, ct) : null;
 
         var ns = new Namespace
         {
@@ -28,18 +28,21 @@ public sealed record SetNamespaceCommand : ICommand
 
         await store.SetNamespaceAsync(ns, ct);
 
-        // Create audit on all nodes - storage handles idempotency via upsert
-        var action = existing is null ? AuditAction.NamespaceCreated : AuditAction.NamespaceUpdated;
-        await store.AppendAuditAsync(new AuditEvent
+        if (auditEnabled)
         {
-            Id = AuditIdGenerator.Generate(Timestamp, Path, null, action),
-            Timestamp = Timestamp,
-            Action = action,
-            Actor = Author,
-            Namespace = Path,
-            Key = null,
-            OldValue = existing?.Description,
-            NewValue = Description
-        }, ct);
+            // Create audit on all nodes - storage handles idempotency via upsert
+            var action = existing is null ? AuditAction.NamespaceCreated : AuditAction.NamespaceUpdated;
+            await store.AppendAuditAsync(new AuditEvent
+            {
+                Id = AuditIdGenerator.Generate(Timestamp, Path, null, action),
+                Timestamp = Timestamp,
+                Action = action,
+                Actor = Author,
+                Namespace = Path,
+                Key = null,
+                OldValue = existing?.Description,
+                NewValue = Description
+            }, ct);
+        }
     }
 }

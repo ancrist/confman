@@ -32,11 +32,9 @@ except ImportError:
 # --- Constants ---
 
 TIERS: dict[str, dict[str, int]] = {
-    "small": {"namespaces": 5, "keys_per_ns": 20},
-    "large": {"namespaces": 20, "keys_per_ns": 50},
+    "small": {"namespaces": 5, "keys_per_ns": 20, "payload_size": 1024},       # 1 KB, 100 entries
+    "large": {"namespaces": 10, "keys_per_ns": 50, "payload_size": 10240},     # 100 KB, 500 entries
 }
-
-DEFAULT_PAYLOAD_SIZE = 1024  # 1 KB
 CLUSTER_PORTS = [6100, 6200, 6300]
 LOCUSTFILES_DIR = Path(__file__).parent / "locustfiles"
 
@@ -215,6 +213,7 @@ def run_scenario(
     cmd = [
         sys.executable, "-m", "locust",
         "--headless",
+        "--only-summary",  # Only print final stats, not interval updates
         "--locustfile", str(LOCUSTFILES_DIR / locustfile),
         "--host", host,
         "--users", str(users),
@@ -409,8 +408,9 @@ def main() -> None:
     # 3. Seed data
     tier_cfg = TIERS[args.tier]
     total = tier_cfg["namespaces"] * tier_cfg["keys_per_ns"]
-    print(f"\nSeeding data (tier={args.tier}, {total} entries, payload={DEFAULT_PAYLOAD_SIZE}B)...")
-    registry = seed_data(leader, args.api_key, args.tier, DEFAULT_PAYLOAD_SIZE)
+    payload_size = tier_cfg["payload_size"]
+    print(f"\nSeeding data (tier={args.tier}, {total} entries, payload={payload_size // 1024}KB)...")
+    registry = seed_data(leader, args.api_key, args.tier, payload_size)
     registry_path, tmpdir = write_key_registry(registry, args.tier)
     print(f"  Key registry: {registry_path}")
 
@@ -433,7 +433,7 @@ def main() -> None:
         "BENCH_API_KEY": args.api_key,
         "BENCH_KEY_REGISTRY_FILE": registry_path,
         "BENCH_NAMESPACES": json.dumps(namespaces),
-        "BENCH_PAYLOAD_SIZE": str(DEFAULT_PAYLOAD_SIZE),
+        "BENCH_PAYLOAD_SIZE": str(payload_size),
     }
 
     # 5. Prepare output directory
