@@ -56,12 +56,18 @@ try
     // Configure WriteAheadLog options for the state machine
     var dataPath = builder.Configuration["Storage:DataPath"] ?? "./data";
     var walPath = Path.Combine(dataPath, "raft-log");
+    var flushIntervalMs = builder.Configuration.GetValue<int>("Raft:FlushIntervalMs", 100);
+    if (flushIntervalMs > 0)
+        Log.Warning("WAL batched flush enabled (FlushIntervalMs={FlushIntervalMs}). Writes within this window may be lost if majority of nodes crash simultaneously", flushIntervalMs);
     builder.Services.AddSingleton(new DotNext.Net.Cluster.Consensus.Raft.StateMachine.WriteAheadLog.Options
     {
         Location = walPath,
         // Performance tuning: PrivateMemory gives +30-50% write throughput at cost of more RAM
         MemoryManagement = DotNext.Net.Cluster.Consensus.Raft.StateMachine.WriteAheadLog.MemoryManagementStrategy.PrivateMemory,
-        ChunkSize = 512 * 1024,  // 512 KB chunks reduce file management overhead
+        ChunkSize = 8 * 1024 * 1024,  // 8 MB chunks: avoids page overflow with large payloads (e.g. 100KB values)
+        // Batch fsync: amortizes disk I/O across concurrent writes (group commit).
+        // Default 100ms matches etcd's approach. Set to 0 for per-commit durability.
+        FlushInterval = TimeSpan.FromMilliseconds(flushIntervalMs),
     });
 
     // Register state machine for Raft log replication

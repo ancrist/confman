@@ -84,7 +84,6 @@ public class ConfigController : ControllerBase
     [HttpPut("{key}")]
     [Authorize(Policy = "Write")]
     [ProducesResponseType(typeof(ConfigEntryDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ConfigEntryDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Set(
         [FromRoute(Name = "namespace")] string ns,
@@ -105,9 +104,6 @@ public class ConfigController : ControllerBase
         {
             _logger.LogInformation("Setting config {Namespace}/{Key} by {Author}", ns, key, author);
         }
-
-        // Check if entry exists for response code
-        var existing = await _store.GetAsync(ns, key, ct);
 
         var command = new SetConfigCommand
         {
@@ -151,14 +147,8 @@ public class ConfigController : ControllerBase
             _logger.LogInformation("Set config {Namespace}/{Key} complete ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
         }
 
-        var dto = ConfigEntryDto.FromModel(entry);
-
-        if (existing is null)
-        {
-            return CreatedAtAction(nameof(Get), new { @namespace = ns, key }, dto);
-        }
-
-        return Ok(dto);
+        // PUT is idempotent — always return 200 OK regardless of create vs update
+        return Ok(ConfigEntryDto.FromModel(entry));
     }
 
     /// <summary>
