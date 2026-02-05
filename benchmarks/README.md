@@ -23,8 +23,11 @@ Dependencies: `locust`, `requests`, `pandas`, `tabulate` (pandas/tabulate are op
 # Run small tier (5 namespaces, 100 entries)
 python run_benchmark.py --tier small
 
-# Run large tier (20 namespaces, 1000 entries)
+# Run large tier (10 namespaces, 500 entries)
 python run_benchmark.py --tier large
+
+# Run xlarge tier (20 namespaces, 10000 entries)
+python run_benchmark.py --tier xlarge
 
 # View results from previous run (no benchmarks)
 python run_benchmark.py --results-only
@@ -53,9 +56,10 @@ The wrapper auto-discovers the cluster leader via `/health/ready` and seeds test
 | Tier | Namespaces | Keys/NS | Total Entries | Payload | Total Data |
 |------|------------|---------|---------------|---------|------------|
 | small | 5 | 20 | 100 | 1 KB | ~100 KB |
-| large | 10 | 50 | 500 | 10 KB | ~5 MB |
+| large | 10 | 50 | 500 | 1 KB | ~500 KB |
+| xlarge | 20 | 500 | 10,000 | 1 KB | ~10 MB |
 
-**Note:** Running all 3 nodes on a single machine limits resources. The large tier is sized to avoid file handle exhaustion and memory pressure on local dev clusters.
+**Note:** Running all 3 nodes on a single machine limits resources. The xlarge tier takes ~2-3 minutes to seed.
 
 ## Known Limitations
 
@@ -90,7 +94,7 @@ Raw CSV files are also written to `benchmarks/results/` for further analysis.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--tier` | `small` | Dataset size tier |
+| `--tier` | `small` | Dataset size tier (`small`, `large`, `xlarge`) |
 | `--host` | `http://127.0.0.1:6100` | Cluster entry point |
 | `--api-key` | `confman_dev_abc123` | API key (or `CONFMAN_BENCH_API_KEY` env var) |
 | `--output-dir` | `benchmarks/results/` | CSV output directory |

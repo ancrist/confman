@@ -33,7 +33,8 @@ except ImportError:
 
 TIERS: dict[str, dict[str, int]] = {
     "small": {"namespaces": 5, "keys_per_ns": 20, "payload_size": 1024},       # 1 KB, 100 entries
-    "large": {"namespaces": 10, "keys_per_ns": 50, "payload_size": 10240},    # 10 KB, 500 entries
+    "large": {"namespaces": 10, "keys_per_ns": 50, "payload_size": 1024},      # 1 KB, 500 entries
+    "xlarge": {"namespaces": 20, "keys_per_ns": 500, "payload_size": 1024},    # 1 KB, 10000 entries
 }
 CLUSTER_PORTS = [6100, 6200, 6300]
 LOCUSTFILES_DIR = Path(__file__).parent / "locustfiles"
@@ -352,7 +353,7 @@ def main() -> None:
     )
     p.add_argument(
         "--tier",
-        choices=["small", "large"],
+        choices=["small", "large", "xlarge"],
         default="small",
         help="Dataset tier (default: small)",
     )
