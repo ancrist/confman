@@ -64,7 +64,7 @@ try
         Location = walPath,
         // Performance tuning: PrivateMemory gives +30-50% write throughput at cost of more RAM
         MemoryManagement = DotNext.Net.Cluster.Consensus.Raft.StateMachine.WriteAheadLog.MemoryManagementStrategy.PrivateMemory,
-        ChunkSize = 512 * 1024,  // 512 KB chunks reduce file management overhead
+        ChunkSize = 8 * 1024 * 1024,  // 8 MB chunks: avoids page overflow with large payloads (e.g. 100KB values)
         // Batch fsync: amortizes disk I/O across concurrent writes (group commit).
         // Default 100ms matches etcd's approach. Set to 0 for per-commit durability.
         FlushInterval = TimeSpan.FromMilliseconds(flushIntervalMs),
