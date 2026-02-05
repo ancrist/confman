@@ -59,22 +59,23 @@ public class ReadBarrierMiddleware
         timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(timeoutMs));
 
         var stopwatch = Stopwatch.StartNew();
+        var barrierSucceeded = false;
 
         try
         {
             await cluster.ApplyReadBarrierAsync(timeoutCts.Token);
             stopwatch.Stop();
+            barrierSucceeded = true;
 
             _logger.LogDebug("Read barrier succeeded in {ElapsedMs}ms for {Method} {Path}",
                 stopwatch.ElapsedMilliseconds, context.Request.Method, context.Request.Path);
-
-            await _next(context);
         }
         catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
         {
             // Client disconnected — nothing to do
             _logger.LogDebug("Client disconnected during read barrier for {Method} {Path}",
                 context.Request.Method, context.Request.Path);
+            return;
         }
         catch (Exception ex)
         {
@@ -83,7 +84,18 @@ public class ReadBarrierMiddleware
             _logger.LogWarning(ex, "Read barrier failed after {ElapsedMs}ms for {Method} {Path} (mode: {FailureMode})",
                 stopwatch.ElapsedMilliseconds, context.Request.Method, context.Request.Path, failureMode);
 
-            await HandleBarrierFailureAsync(context, failureMode, ex);
+            if (failureMode != "stale")
+            {
+                await HandleBarrierFailureAsync(context, failureMode, ex);
+                return;
+            }
+
+            // Stale mode: proceed to serve potentially-stale data
+        }
+
+        if (barrierSucceeded || failureMode == "stale")
+        {
+            await _next(context);
         }
     }
 
