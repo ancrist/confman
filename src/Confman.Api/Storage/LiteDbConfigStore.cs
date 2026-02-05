@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Confman.Api.Cluster;
+using Confman.Api.Cluster.Commands;
 using Confman.Api.Models;
 using LiteDB;
 
@@ -351,6 +352,254 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
                     _logger.LogDebug("Set config {Ns}/{Key} v{Version}{AuditStatus} (find: {FindMs} ms, total: {ElapsedMs} ms)",
                         entry.Namespace, entry.Key, entry.Version, _auditEnabled ? " + audit" : "", findMs, sw.ElapsedMilliseconds);
                 }
+            }
+            catch
+            {
+                _db.Rollback();
+                throw;
+            }
+        }
+        finally
+        {
+            _dbSemaphore.Release();
+        }
+    }
+
+    public async Task SetWithAuditAsync(ConfigEntry entry, string author, DateTimeOffset timestamp, CancellationToken ct = default)
+    {
+        await _dbSemaphore.WaitAsync(ct);
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            var existing = _configs.FindOne(x => x.Namespace == entry.Namespace && x.Key == entry.Key);
+            var findMs = sw.ElapsedMilliseconds;
+
+            _db.BeginTrans();
+            try
+            {
+                if (existing is not null)
+                {
+                    entry.Id = existing.Id;
+                    entry.Version = existing.Version + 1;
+                    _configs.Update(entry);
+                }
+                else
+                {
+                    entry.Version = 1;
+                    _configs.Insert(entry);
+                }
+
+                if (_auditEnabled)
+                {
+                    var action = existing is null ? AuditAction.ConfigCreated : AuditAction.ConfigUpdated;
+                    _audit.Upsert(new AuditEvent
+                    {
+                        Id = AuditIdGenerator.Generate(timestamp, entry.Namespace, entry.Key, action),
+                        Timestamp = timestamp,
+                        Action = action,
+                        Actor = author,
+                        Namespace = entry.Namespace,
+                        Key = entry.Key,
+                        OldValue = existing?.Value,
+                        NewValue = entry.Value
+                    });
+                }
+
+                _db.Commit();
+
+                if (_logApplies)
+                    _logger.LogInformation("Set config {Ns}/{Key} v{Version}{AuditStatus} (find: {FindMs} ms, total: {ElapsedMs} ms)",
+                        entry.Namespace, entry.Key, entry.Version, _auditEnabled ? " + audit" : "", findMs, sw.ElapsedMilliseconds);
+                else
+                    _logger.LogDebug("Set config {Ns}/{Key} v{Version}{AuditStatus} (find: {FindMs} ms, total: {ElapsedMs} ms)",
+                        entry.Namespace, entry.Key, entry.Version, _auditEnabled ? " + audit" : "", findMs, sw.ElapsedMilliseconds);
+            }
+            catch
+            {
+                _db.Rollback();
+                throw;
+            }
+        }
+        finally
+        {
+            _dbSemaphore.Release();
+        }
+    }
+
+    public async Task DeleteWithAuditAsync(string ns, string key, string author, DateTimeOffset timestamp, CancellationToken ct = default)
+    {
+        await _dbSemaphore.WaitAsync(ct);
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            var existing = _configs.FindOne(x => x.Namespace == ns && x.Key == key);
+
+            if (existing is null)
+            {
+                if (_logApplies)
+                    _logger.LogInformation("Delete config {Ns}/{Key} - not found, skipping ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
+                else
+                    _logger.LogDebug("Delete config {Ns}/{Key} - not found, skipping ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
+                return;
+            }
+
+            _db.BeginTrans();
+            try
+            {
+                _configs.DeleteMany(x => x.Namespace == ns && x.Key == key);
+
+                if (_auditEnabled)
+                {
+                    var action = AuditAction.ConfigDeleted;
+                    _audit.Upsert(new AuditEvent
+                    {
+                        Id = AuditIdGenerator.Generate(timestamp, ns, key, action),
+                        Timestamp = timestamp,
+                        Action = action,
+                        Actor = author,
+                        Namespace = ns,
+                        Key = key,
+                        OldValue = existing.Value,
+                        NewValue = null
+                    });
+                }
+
+                _db.Commit();
+
+                if (_logApplies)
+                    _logger.LogInformation("Deleted config {Ns}/{Key}{AuditStatus} ({ElapsedMs} ms)",
+                        ns, key, _auditEnabled ? " + audit" : "", sw.ElapsedMilliseconds);
+                else
+                    _logger.LogDebug("Deleted config {Ns}/{Key}{AuditStatus} ({ElapsedMs} ms)",
+                        ns, key, _auditEnabled ? " + audit" : "", sw.ElapsedMilliseconds);
+            }
+            catch
+            {
+                _db.Rollback();
+                throw;
+            }
+        }
+        finally
+        {
+            _dbSemaphore.Release();
+        }
+    }
+
+    public async Task SetNamespaceWithAuditAsync(Namespace ns, string author, DateTimeOffset timestamp, CancellationToken ct = default)
+    {
+        await _dbSemaphore.WaitAsync(ct);
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            var existing = _namespaces.FindOne(x => x.Path == ns.Path);
+
+            _db.BeginTrans();
+            try
+            {
+                if (existing is not null)
+                {
+                    ns.Id = existing.Id;
+                    ns.CreatedAt = existing.CreatedAt;
+                    _namespaces.Update(ns);
+                }
+                else
+                {
+                    _namespaces.Insert(ns);
+                }
+
+                if (_auditEnabled)
+                {
+                    var action = existing is null ? AuditAction.NamespaceCreated : AuditAction.NamespaceUpdated;
+                    _audit.Upsert(new AuditEvent
+                    {
+                        Id = AuditIdGenerator.Generate(timestamp, ns.Path, null, action),
+                        Timestamp = timestamp,
+                        Action = action,
+                        Actor = author,
+                        Namespace = ns.Path,
+                        Key = null,
+                        OldValue = existing?.Description,
+                        NewValue = ns.Description
+                    });
+                }
+
+                _db.Commit();
+
+                if (_logApplies)
+                    _logger.LogInformation("{Action} namespace {Path}{AuditStatus} ({ElapsedMs} ms)",
+                        existing is null ? "Created" : "Updated", ns.Path, _auditEnabled ? " + audit" : "", sw.ElapsedMilliseconds);
+                else
+                    _logger.LogDebug("{Action} namespace {Path}{AuditStatus} ({ElapsedMs} ms)",
+                        existing is null ? "Created" : "Updated", ns.Path, _auditEnabled ? " + audit" : "", sw.ElapsedMilliseconds);
+            }
+            catch
+            {
+                _db.Rollback();
+                throw;
+            }
+        }
+        finally
+        {
+            _dbSemaphore.Release();
+        }
+    }
+
+    public async Task DeleteNamespaceWithAuditAsync(string path, string author, DateTimeOffset timestamp, CancellationToken ct = default)
+    {
+        await _dbSemaphore.WaitAsync(ct);
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            var existing = _namespaces.FindOne(x => x.Path == path);
+
+            if (existing is null)
+            {
+                if (_logApplies)
+                    _logger.LogInformation("Delete namespace {Path} - not found, skipping ({ElapsedMs} ms)", path, sw.ElapsedMilliseconds);
+                else
+                    _logger.LogDebug("Delete namespace {Path} - not found, skipping ({ElapsedMs} ms)", path, sw.ElapsedMilliseconds);
+                return;
+            }
+
+            _db.BeginTrans();
+            try
+            {
+                // Cascade delete: remove all configs in this namespace first
+                var deletedConfigs = _configs.DeleteMany(x => x.Namespace == path);
+                if (deletedConfigs > 0)
+                {
+                    if (_logApplies)
+                        _logger.LogInformation("Cascade deleted {Count} configs in namespace {Path}", deletedConfigs, path);
+                    else
+                        _logger.LogDebug("Cascade deleted {Count} configs in namespace {Path}", deletedConfigs, path);
+                }
+
+                _namespaces.DeleteMany(x => x.Path == path);
+
+                if (_auditEnabled)
+                {
+                    var action = AuditAction.NamespaceDeleted;
+                    _audit.Upsert(new AuditEvent
+                    {
+                        Id = AuditIdGenerator.Generate(timestamp, path, null, action),
+                        Timestamp = timestamp,
+                        Action = action,
+                        Actor = author,
+                        Namespace = path,
+                        Key = null,
+                        OldValue = existing.Description,
+                        NewValue = null
+                    });
+                }
+
+                _db.Commit();
+
+                if (_logApplies)
+                    _logger.LogInformation("Deleted namespace {Path}{AuditStatus} ({ElapsedMs} ms)",
+                        path, _auditEnabled ? " + audit" : "", sw.ElapsedMilliseconds);
+                else
+                    _logger.LogDebug("Deleted namespace {Path}{AuditStatus} ({ElapsedMs} ms)",
+                        path, _auditEnabled ? " + audit" : "", sw.ElapsedMilliseconds);
             }
             catch
             {

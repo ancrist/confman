@@ -27,7 +27,12 @@ public interface IConfigStore
     Task<IReadOnlyList<AuditEvent>> GetAuditEventsAsync(string ns, int limit = 50, CancellationToken ct = default);
 
     // Batched operations (single transaction for better performance)
+    // The store handles versioning, audit event creation, and old-value capture in one read.
     Task SetWithAuditAsync(ConfigEntry entry, AuditEvent audit, CancellationToken ct = default);
+    Task SetWithAuditAsync(ConfigEntry entry, string author, DateTimeOffset timestamp, CancellationToken ct = default);
+    Task DeleteWithAuditAsync(string ns, string key, string author, DateTimeOffset timestamp, CancellationToken ct = default);
+    Task SetNamespaceWithAuditAsync(Namespace ns, string author, DateTimeOffset timestamp, CancellationToken ct = default);
+    Task DeleteNamespaceWithAuditAsync(string path, string author, DateTimeOffset timestamp, CancellationToken ct = default);
 
     // Bulk operations for snapshots
     Task<List<ConfigEntry>> GetAllConfigsAsync(CancellationToken ct = default);

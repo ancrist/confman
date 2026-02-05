@@ -124,31 +124,23 @@ public class ConfigController : ControllerBase
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
-        // Fetch the updated entry - may need brief retry due to apply lag
-        ConfigEntry? entry = null;
-        for (var i = 0; i < 5 && entry is null; i++)
-        {
-            entry = await _store.GetAsync(ns, key, ct);
-            if (entry is null)
-                await Task.Delay(10, ct);
-        }
-
-        if (entry is null)
-        {
-            _logger.LogWarning("Set config {Namespace}/{Key} apply pending ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
-            return Problem(
-                title: "Apply pending",
-                detail: "The change was replicated but not yet applied. Retry the read.",
-                statusCode: StatusCodes.Status503ServiceUnavailable);
-        }
-
         if (_logConfigChanges)
         {
-            _logger.LogInformation("Set config {Namespace}/{Key} complete ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
+            _logger.LogInformation("Set config {Namespace}/{Key} committed ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
         }
 
-        // PUT is idempotent — always return 200 OK regardless of create vs update
-        return Ok(ConfigEntryDto.FromModel(entry));
+        // Return command data directly — Raft commit guarantees durability.
+        // No poll loop needed: ReadBarrier on subsequent GETs ensures visibility.
+        return Ok(new ConfigEntryDto
+        {
+            Namespace = ns,
+            Key = key,
+            Value = request.Value,
+            Type = request.Type ?? "string",
+            UpdatedAt = command.Timestamp,
+            UpdatedBy = author,
+            Version = 0  // Version assigned by state machine on apply
+        });
     }
 
     /// <summary>

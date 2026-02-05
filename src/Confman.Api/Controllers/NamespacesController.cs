@@ -93,9 +93,6 @@ public class NamespacesController : ControllerBase
         var author = User.FindFirstValue(ClaimTypes.Name) ?? "unknown";
         _logger.LogInformation("Setting namespace {Namespace} by {Author}", ns, author);
 
-        // Check if namespace exists for response code
-        var existing = await _store.GetNamespaceAsync(ns, ct);
-
         var command = new SetNamespaceCommand
         {
             Path = ns,
@@ -113,16 +110,14 @@ public class NamespacesController : ControllerBase
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
-        // Fetch the updated namespace
-        var result = await _store.GetNamespaceAsync(ns, ct);
-        var dto = NamespaceDto.FromModel(result!);
-
-        if (existing is null)
+        // Return command data directly — Raft commit guarantees durability.
+        return Ok(new NamespaceDto
         {
-            return CreatedAtAction(nameof(Get), new { @namespace = ns }, dto);
-        }
-
-        return Ok(dto);
+            Path = ns,
+            Description = request.Description,
+            Owner = request.Owner ?? author,
+            CreatedAt = command.Timestamp
+        });
     }
 
     /// <summary>

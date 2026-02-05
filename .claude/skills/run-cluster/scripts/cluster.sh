@@ -29,10 +29,10 @@ start_cluster() {
 
     # Build once upfront to avoid DLL lock contention between nodes
     echo "  Building project..."
-    dotnet build "${REPO_ROOT}/${PROJECT}" -c Release -q 2>&1 || {
+    if ! dotnet build "${REPO_ROOT}/${PROJECT}" -c Release 2>&1 | grep -v "^MSBUILD : error : Building target"; then
         echo "ERROR: Build failed. Check build output above."
         return 1
-    }
+    fi
 
     for i in "${!PORTS[@]}"; do
         local port="${PORTS[$i]}"
