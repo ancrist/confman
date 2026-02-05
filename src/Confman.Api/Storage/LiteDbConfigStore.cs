@@ -41,6 +41,8 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
 
         // Direct mode: in-process locking only (no cross-process mutex).
         // Safe because each Confman node is a single process with its own database file.
+        // WARNING: Do not open confman.db with external tools while Confman is running.
+        // For backups, stop the node or use the snapshot API.
         _db = new LiteDatabase($"Filename={dbPath};Connection=direct");
 
         _configs = _db.GetCollection<ConfigEntry>("configs");

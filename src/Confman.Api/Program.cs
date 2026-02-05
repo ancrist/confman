@@ -57,6 +57,8 @@ try
     var dataPath = builder.Configuration["Storage:DataPath"] ?? "./data";
     var walPath = Path.Combine(dataPath, "raft-log");
     var flushIntervalMs = builder.Configuration.GetValue<int>("Raft:FlushIntervalMs", 100);
+    if (flushIntervalMs > 0)
+        Log.Warning("WAL batched flush enabled (FlushIntervalMs={FlushIntervalMs}). Writes within this window may be lost if majority of nodes crash simultaneously", flushIntervalMs);
     builder.Services.AddSingleton(new DotNext.Net.Cluster.Consensus.Raft.StateMachine.WriteAheadLog.Options
     {
         Location = walPath,
