@@ -50,7 +50,7 @@
 | Feature | Status | Description |
 |---------|--------|-------------|
 | API Key Authentication | ✅ | `X-Api-Key` header validation with configurable keys |
-| Role-Based Access Control | ✅ | Three roles: `admin`, `write`, `read` with hierarchical permissions |
+| Role-Based Access Control | ✅ | Four roles: `admin`, `publisher`, `editor`, `viewer` with hierarchical permissions |
 | Namespace Scoping | ✅ | API keys can be restricted to specific namespaces or wildcards (`*`) |
 | Policy-Based Authorization | ✅ | Separate policies for Admin, Write, and ReadOnly operations |
 
@@ -95,7 +95,7 @@ These features are designed in the architecture documents but not yet implemente
 | Publishing Workflow | 🔴 | High | Draft → Review → Approve → Publish states with approval gates |
 | Encrypted Values | 🔴 | Medium | `x-confman-encrypted` schema extension for secrets |
 | External Secret References | 🔴 | Medium | `keyvault://`, `vault://` URI schemes resolved by clients |
-| Custom RBAC Roles | 🔴 | Low | User-defined roles beyond admin/write/read |
+| Custom RBAC Roles | 🔴 | Low | User-defined roles beyond admin/publisher/editor/viewer |
 | mTLS Authentication | 🔴 | Low | Mutual TLS for inter-node and client auth |
 | Staged Rollouts | 🔴 | Low | Gradual configuration deployment with targeting rules |
 
@@ -109,7 +109,7 @@ These features are designed in the architecture documents but not yet implemente
 | Storage Backend | LiteDB | Embedded, zero-config, .NET native; suitable for moderate scale |
 | Cluster Topology | Single Raft cluster | Simplicity; all nodes participate in consensus |
 | Node Discovery | Static configuration | Predictable for development; production may use dynamic discovery |
-| API Transport | HTTP/REST | Universal client compatibility; gRPC reserved for inter-node |
+| API Transport | HTTP/REST | Universal client compatibility; Raft uses HTTP transport via DotNext |
 | State Machine | WAL + LiteDB hybrid | WAL for Raft log, LiteDB for queryable config state |
 
 ---

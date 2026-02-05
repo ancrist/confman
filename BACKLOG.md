@@ -117,7 +117,7 @@ The follower blocks briefly until it has caught up, then serves the read.
 
 - `src/Confman.Api/Controllers/ConfigController.cs` — Add version header to write responses, version check to reads
 - `src/Confman.Api/Controllers/NamespacesController.cs` — Same
-- `src/Confman.Api/Services/RaftService.cs` — Expose commit index wait functionality
+- `src/Confman.Api/Cluster/RaftService.cs` — Expose commit index wait functionality
 - `src/Confman.Api/Middleware/` — Add middleware to parse consistency headers
 
 #### References
@@ -169,4 +169,5 @@ Only needed when aggregating audit events across multiple Raft groups. Single-cl
 
 ## Completed
 
-_None yet — this backlog was just created._
+- **Audit event replication** — Audit events now created on all nodes during state machine apply (GitHub #2)
+- **Full-state snapshots** — Snapshots serialize all configs, namespaces, and audit events (GitHub #3)

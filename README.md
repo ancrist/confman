@@ -11,7 +11,7 @@ Confman provides a centralized, highly-available configuration store for distrib
 - **Distributed consensus** — Raft-based replication via DotNext.AspNetCore.Cluster
 - **Hierarchical key-value store** — Organize configs by namespace
 - **REST API** — Simple HTTP interface with JSON responses
-- **API key authentication** — Static keys with role-based access (reader/admin)
+- **API key authentication** — Static keys with role-based access (admin/publisher/editor/viewer)
 - **Audit trail** — Track all configuration changes
 - **Health endpoints** — Liveness and readiness probes for load balancers
 
@@ -113,7 +113,7 @@ dotnet test
       {
         "Key": "confman_dev_reader",
         "Name": "Development Reader",
-        "Roles": ["reader"]
+        "Roles": ["viewer"]
       }
     ]
   }

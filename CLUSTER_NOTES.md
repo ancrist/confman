@@ -10,7 +10,7 @@
 |---------|-------|-------------|
 | Nodes | 3 | Standard Raft cluster size |
 | Quorum | 2 | Majority required for consensus (n/2 + 1) |
-| Election Timeout | 1000-2000ms | Randomized to prevent split votes |
+| Election Timeout | 150-300ms | Randomized to prevent split votes |
 | Heartbeat Threshold | 0.5 | Leader heartbeats at half election timeout |
 | Replication Timeout | 10s | Max wait for write replication |
 
@@ -29,7 +29,7 @@ When the cluster starts, nodes begin an election:
 ### Election After Leader Failure
 When the leader dies:
 1. Followers stop receiving heartbeats
-2. After election timeout (1000-2000ms), a follower becomes candidate
+2. After election timeout (150-300ms), a follower becomes candidate
 3. New election proceeds as normal
 4. **Term number increments** (e.g., term 13 → term 14)
 
@@ -146,7 +146,7 @@ Benefits:
 ## Failure Recovery Checklist
 
 ### Single Node Failure
-1. If leader died → automatic election (1000-2000ms)
+1. If leader died → automatic election (150-300ms)
 2. New leader accepts writes immediately
 3. Restart failed node → catches up via log replication
 4. **No data loss** — committed entries are on majority

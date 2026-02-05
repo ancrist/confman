@@ -178,9 +178,9 @@ Schemas use JSON Schema with custom extensions:
 ## Technology Stack
 
 - **Runtime:** .NET 10+
-- **API:** ASP.NET Core (REST for clients, gRPC for inter-node)
-- **Consensus:** Raft via DotNext.Net.Cluster
-- **Storage:** RocksDB or LiteDB for persistent state
+- **API:** ASP.NET Core REST (clients and inter-node via HTTP)
+- **Consensus:** Raft via DotNext.AspNetCore.Cluster (local project reference)
+- **Storage:** LiteDB for persistent state
 
 ---
 
@@ -188,96 +188,66 @@ Schemas use JSON Schema with custom extensions:
 
 ### 1. Networking & RPC
 
-| Consideration | Recommendation |
+| Consideration | Implementation |
 |---------------|----------------|
-| Inter-node communication | gRPC for Raft node-to-node (efficient, streaming support) |
-| Client API | REST (ASP.NET Core) for external clients, gRPC for internal |
-| Service discovery | Consul, etcd, or Kubernetes DNS for node membership |
+| Inter-node communication | HTTP via DotNext.AspNetCore.Cluster (Raft over HTTP) |
+| Client API | REST (ASP.NET Core) for external clients |
+| Service discovery | Static configuration (node addresses in appsettings.json) |
 
 **Libraries:**
-- `Grpc.AspNetCore` — gRPC server/client
+- `DotNext.AspNetCore.Cluster` — Raft over HTTP transport
 - `Microsoft.AspNetCore.Mvc` — REST controllers
-- `Steeltoe.Discovery` — Service discovery integration
 
 ### 2. Consensus & Coordination
 
-| Option | Notes |
+| Choice | Notes |
 |--------|-------|
-| Roll your own Raft | Educational, but complex (leader election, log compaction, snapshots) |
-| DotNext.Net.Cluster | Production-ready Raft implementation for .NET |
-| Orleans | Virtual actor model with built-in clustering (different paradigm) |
+| DotNext.AspNetCore.Cluster | Production-ready Raft implementation for .NET (chosen) |
 
 **Libraries:**
-- `DotNext.Net.Cluster` — Raft consensus, log replication, snapshotting
-- `DotNext.IO` — Persistent log storage
-- `Akka.NET` — Actor model with clustering (alternative to Raft)
+- `DotNext.AspNetCore.Cluster` — Raft consensus, log replication, snapshotting (local project reference for debugging)
 
 ### 3. Storage & Persistence
 
-| Layer | Options |
-|-------|---------|
-| Raft log | File-based (append-only), RocksDB, SQLite |
-| State machine (KV) | In-memory + snapshots, LiteDB, RocksDB |
-| Snapshots | Binary serialization to disk |
+| Layer | Implementation |
+|-------|----------------|
+| Raft log | WAL (DotNext persistent log on disk) |
+| State machine (KV) | LiteDB (embedded NoSQL) |
+| Snapshots | JSON serialization to disk |
 
 **Libraries:**
-- `RocksDbSharp` — Embedded key-value store (used by Kafka, CockroachDB)
-- `LiteDB` — Embedded NoSQL (simpler, .NET native)
-- `MessagePack-CSharp` — Fast binary serialization for snapshots
+- `LiteDB` — Embedded NoSQL (Version 5.0.21)
 
 ### 4. Observability
 
-| Aspect | Tools |
-|--------|-------|
-| Metrics | Prometheus (leader state, commit latency, quorum health) |
-| Tracing | OpenTelemetry for distributed request tracing |
-| Logging | Structured logging with correlation IDs |
+| Aspect | Implementation |
+|--------|----------------|
+| Logging | Structured logging with Serilog + correlation IDs |
 | Health checks | ASP.NET Core health checks for load balancers |
 
 **Libraries:**
-- `OpenTelemetry.Extensions.Hosting` — Metrics, tracing, logging
-- `prometheus-net.AspNetCore` — Prometheus metrics endpoint
-- `Serilog` — Structured logging
-- `Microsoft.Extensions.Diagnostics.HealthChecks` — Built-in health checks
+- `Serilog.AspNetCore` — Structured logging (Version 10.0.0)
+- Built-in ASP.NET Core health checks
 
-### 5. Resilience & Fault Tolerance
+### 5. Configuration & Secrets
 
-| Pattern | Purpose |
-|---------|---------|
-| Retry with backoff | Transient failures in node communication |
-| Circuit breaker | Prevent cascade failures |
-| Timeout policies | Bound latency for client requests |
-| Bulkhead isolation | Isolate shard failures |
+| Concern | Implementation |
+|---------|----------------|
+| Node config | `appsettings.json` + `appsettings.{node}.json` per node |
+| Cluster topology | Static member list in per-node config |
 
-**Libraries:**
-- `Polly` — Resilience policies (retry, circuit breaker, timeout)
-- `Microsoft.Extensions.Http.Resilience` — HttpClient resilience (.NET 8+)
+### 6. Testing
 
-### 6. Configuration & Secrets
-
-| Concern | Approach |
-|---------|----------|
-| Node config | `appsettings.json` + environment variables |
-| Secrets | Azure Key Vault, HashiCorp Vault, or k8s secrets |
-| Cluster topology | Seed nodes in config, dynamic discovery via gossip |
+| Type | Implementation |
+|------|----------------|
+| Unit | xUnit + NSubstitute |
+| Integration | Microsoft.AspNetCore.Mvc.Testing |
 
 **Libraries:**
-- `Azure.Extensions.AspNetCore.Configuration.Secrets` — Key Vault integration
-- `VaultSharp` — HashiCorp Vault client
-
-### 7. Testing
-
-| Type | Focus |
-|------|-------|
-| Unit | Log replication logic, state machine transitions |
-| Integration | Multi-node cluster in Docker |
-| Chaos/Fault injection | Network partitions, leader kills |
-
-**Libraries:**
-- `xUnit` or `NUnit` — Test framework
-- `Testcontainers` — Spin up multi-node clusters in Docker
-- `NBomber` — Load testing
-- `Simmy` (Polly extension) — Chaos engineering / fault injection
+- `xunit` Version 2.9.3
+- `NSubstitute` Version 5.3.0
+- `Microsoft.AspNetCore.Mvc.Testing` Version 10.0.2
+- `coverlet.collector` Version 6.0.4
 
 ---
 
@@ -285,56 +255,62 @@ Schemas use JSON Schema with custom extensions:
 
 ```
 src/
-├── Confman.Api/              # ASP.NET Core REST API
+├── Confman.Api/                   # ASP.NET Core REST API (monolith)
+│   ├── Auth/
+│   │   ├── ApiKeyAuthenticationHandler.cs
+│   │   └── NamespaceAuthorizationHandler.cs
+│   ├── Cluster/
+│   │   ├── Commands/              # Raft command types
+│   │   │   ├── ICommand.cs
+│   │   │   ├── SetConfigCommand.cs
+│   │   │   ├── DeleteConfigCommand.cs
+│   │   │   ├── SetNamespaceCommand.cs
+│   │   │   ├── DeleteNamespaceCommand.cs
+│   │   │   └── AuditIdGenerator.cs
+│   │   ├── ClusterLifetime.cs
+│   │   ├── ConfigStateMachine.cs
+│   │   ├── RaftService.cs
+│   │   └── SnapshotData.cs
 │   ├── Controllers/
-│   │   ├── ConfigController.cs    # GET /config/{key}
-│   │   └── AdminController.cs     # POST /rollback, cluster status
-│   └── Program.cs
-├── Confman.Raft/             # Consensus layer
-│   ├── RaftNode.cs
-│   ├── LogReplication.cs
-│   └── LeaderElection.cs
-├── Confman.Store/            # KV state machine + snapshots
-│   ├── KeyValueStore.cs
-│   ├── SnapshotManager.cs
-│   └── SchemaValidator.cs
-├── Confman.Core/             # Shared models, interfaces
+│   │   ├── AuditController.cs
+│   │   ├── ConfigController.cs
+│   │   └── NamespacesController.cs
+│   ├── Middleware/
+│   │   ├── CorrelationIdMiddleware.cs
+│   │   └── ReadBarrierMiddleware.cs
 │   ├── Models/
-│   └── Interfaces/
-└── Confman.Infrastructure/   # gRPC, persistence adapters
-    ├── Grpc/
-    └── Persistence/
+│   │   ├── AuditAction.cs
+│   │   ├── AuditEvent.cs
+│   │   ├── ConfigEntry.cs
+│   │   └── Namespace.cs
+│   ├── Storage/
+│   │   ├── IConfigStore.cs
+│   │   └── LiteDbConfigStore.cs
+│   └── Program.cs
+└── Confman.Dashboard/             # Vite + vanilla JS dashboard
 
 tests/
-├── Confman.UnitTests/
-├── Confman.IntegrationTests/
-└── Confman.ChaosTests/
+└── Confman.Tests/                 # xUnit + NSubstitute
 ```
 
 ---
 
-## Key NuGet Packages
+## Key Dependencies
 
 ```xml
-<!-- Core -->
-<PackageReference Include="DotNext.Net.Cluster" Version="5.*" />
-<PackageReference Include="Grpc.AspNetCore" Version="2.*" />
+<!-- Confman.Api -->
+<!-- DotNext.AspNetCore.Cluster — local project reference for debugging WAL behavior -->
+<ProjectReference Include=".../DotNext.AspNetCore.Cluster.csproj" />
+<PackageReference Include="LiteDB" Version="5.0.21" />
+<PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+<PackageReference Include="Swashbuckle.AspNetCore" Version="8.0.0" />
+<PackageReference Include="Workleap.DotNet.CodingStandards" Version="1.1.47" />
 
-<!-- Storage -->
-<PackageReference Include="RocksDbSharp" Version="8.*" />
-<PackageReference Include="MessagePack" Version="2.*" />
-
-<!-- Resilience -->
-<PackageReference Include="Polly.Extensions" Version="8.*" />
-
-<!-- Observability -->
-<PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.*" />
-<PackageReference Include="Serilog.AspNetCore" Version="8.*" />
-<PackageReference Include="prometheus-net.AspNetCore" Version="8.*" />
-
-<!-- Testing -->
-<PackageReference Include="Testcontainers" Version="3.*" />
-<PackageReference Include="Simmy" Version="8.*" />
+<!-- Confman.Tests -->
+<PackageReference Include="xunit" Version="2.9.3" />
+<PackageReference Include="NSubstitute" Version="5.3.0" />
+<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.2" />
+<PackageReference Include="coverlet.collector" Version="6.0.4" />
 ```
 
 ---
@@ -411,9 +387,10 @@ CONFMAN_NODE_ID=node1 dotnet run --project src/Confman.Api
 - [x] **API auth:** Static API keys (`X-API-Key` header)
 - [x] **Pagination:** Cursor-based
 - [x] **Health checks:** `/health` (liveness) + `/health/ready` (readiness)
+- [x] **Storage backend:** LiteDB (embedded NoSQL, .NET native)
+- [x] **Inter-node transport:** HTTP via DotNext (not gRPC)
 
 ### Open
-- [ ] Choose storage backend (RocksDB vs LiteDB) — needs performance testing
 - [ ] Snapshot/rollback retention policy
 - [ ] History chunking strategy (by time? by count?)
 - [ ] Staged rollout targeting logic (deferred feature)
@@ -440,3 +417,5 @@ CONFMAN_NODE_ID=node1 dotnet run --project src/Confman.Api
 - `docs/brainstorms/2026-01-23-data-model-brainstorm.md` — Document-oriented data model
 - `docs/brainstorms/2026-01-23-publishing-workflow-brainstorm.md` — Governed publishing workflow
 - `docs/brainstorms/2026-01-23-api-design-brainstorm.md` — REST API design
+- `docs/brainstorms/2026-02-01-linearizable-reads-brainstorm.md` — Linearizable reads / version tokens
+- `docs/brainstorms/2026-02-02-cluster-benchmark-brainstorm.md` — Cluster benchmarking strategy
