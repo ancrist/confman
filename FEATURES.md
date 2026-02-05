@@ -31,7 +31,7 @@
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| Hierarchical Namespaces | ✅ | Organize configs under logical namespaces (e.g., `prod/api-gateway`) |
+| Hierarchical Namespaces | 🟡 | Namespaces are flat strings (e.g., `prod`). Slash-separated paths (e.g., `prod/us-east`) not yet supported — route `{namespace}` matches single segment only. Auth layer has prefix matching ready. |
 | Key-Value Storage | ✅ | Store typed configuration values with versioning |
 | CRUD Operations | ✅ | Full create, read, update, delete via REST API |
 | Automatic Versioning | ✅ | Each config entry tracks version number, updated timestamp, and author |

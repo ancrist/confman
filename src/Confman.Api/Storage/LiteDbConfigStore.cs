@@ -39,8 +39,9 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
             serialize: action => action.Value,
             deserialize: bson => AuditAction.Parse(bson.AsString));
 
-        // LiteDB connection string with thread-safe mode
-        _db = new LiteDatabase($"Filename={dbPath};Connection=shared");
+        // Direct mode: in-process locking only (no cross-process mutex).
+        // Safe because each Confman node is a single process with its own database file.
+        _db = new LiteDatabase($"Filename={dbPath};Connection=direct");
 
         _configs = _db.GetCollection<ConfigEntry>("configs");
         _namespaces = _db.GetCollection<Namespace>("namespaces");
