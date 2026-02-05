@@ -29,29 +29,11 @@ public sealed record SetConfigCommand : ICommand
 
         if (auditEnabled)
         {
-            // Get existing entry to capture old value for audit
-            var existing = await store.GetAsync(Namespace, Key, ct);
-
-            // Create audit event
-            var action = existing is null ? AuditAction.ConfigCreated : AuditAction.ConfigUpdated;
-            var audit = new AuditEvent
-            {
-                Id = AuditIdGenerator.Generate(Timestamp, Namespace, Key, action),
-                Timestamp = Timestamp,
-                Action = action,
-                Actor = Author,
-                Namespace = Namespace,
-                Key = Key,
-                OldValue = existing?.Value,
-                NewValue = Value
-            };
-
-            // Batched write - single transaction, single fsync
-            await store.SetWithAuditAsync(entry, audit, ct);
+            // Single call — store handles versioning, audit, and old-value capture in one read
+            await store.SetWithAuditAsync(entry, Author, Timestamp, ct);
         }
         else
         {
-            // Direct write without audit overhead
             await store.SetAsync(entry, ct);
         }
     }
