@@ -76,9 +76,8 @@ public class RaftService : IRaftService
         var sw = Stopwatch.StartNew();
         try
         {
-            // Serialize the command to bytes
-            var json = JsonSerializer.Serialize(command);
-            var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+            // Serialize directly to UTF-8 bytes (avoids intermediate string allocation)
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(command);
 
             _logger.LogDebug("Replicating command: {CommandType}, size: {Size} bytes",
                 command.GetType().Name, bytes.Length);
