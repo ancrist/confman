@@ -55,6 +55,16 @@ public class ReadBarrierMiddleware
             failureMode = DefaultFailureMode;
         }
 
+        // Fast path: leader with valid lease can skip the barrier entirely
+        var useLeaderLease = configuration.GetValue("ReadBarrier:UseLeaderLease", true);
+        if (useLeaderLease && cluster.TryGetLeaseToken(out var leaseToken) && !leaseToken.IsCancellationRequested)
+        {
+            _logger.LogDebug("Leader lease valid, skipping read barrier for {Method} {Path}",
+                context.Request.Method, context.Request.Path);
+            await _next(context);
+            return;
+        }
+
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(timeoutMs));
 
