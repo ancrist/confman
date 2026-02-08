@@ -690,6 +690,9 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
 
     public void Dispose()
     {
+        // Wait for any in-flight operations to complete before disposing.
+        // Without this, Ctrl+C can dispose the semaphore while ApplyAsync is mid-operation.
+        _dbSemaphore.Wait();
         _dbSemaphore.Dispose();
         _db.Dispose();
         _logger.LogInformation("LiteDB connection closed");

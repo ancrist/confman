@@ -114,15 +114,22 @@ public sealed class ConfigStateMachine : SimpleStateMachine
     /// <summary>
     /// Restores state from a snapshot file.
     /// Deserializes and restores all configs, namespaces, and audit events.
+    /// Streams from disk to avoid loading the entire snapshot into a single byte[].
     /// </summary>
     protected override async ValueTask RestoreAsync(FileInfo snapshotFile, CancellationToken token)
     {
-        _logger.LogInformation("Restoring from snapshot: {SnapshotFile}", snapshotFile.FullName);
+        _logger.LogInformation("Restoring from snapshot: {SnapshotFile} ({Size} bytes)", snapshotFile.FullName, snapshotFile.Length);
 
         try
         {
-            var json = await File.ReadAllBytesAsync(snapshotFile.FullName, token);
-            var snapshot = JsonSerializer.Deserialize<SnapshotData>(json);
+            await using var stream = snapshotFile.Open(new FileStreamOptions
+            {
+                Mode = FileMode.Open,
+                Access = FileAccess.Read,
+                Share = FileShare.Read,
+                BufferSize = 81920,
+            });
+            var snapshot = await JsonSerializer.DeserializeAsync<SnapshotData>(stream, cancellationToken: token);
 
             if (snapshot is null)
             {
@@ -152,7 +159,8 @@ public sealed class ConfigStateMachine : SimpleStateMachine
 
     /// <summary>
     /// Persists current state to a snapshot.
-    /// Serializes all configs, namespaces, and audit events to JSON.
+    /// Streams JSON through a temp file to avoid allocating the entire serialized payload in memory.
+    /// With large datasets (e.g. 500 × 1MB configs), the JSON can exceed 1GB — too large for a single byte[].
     /// </summary>
     protected override async ValueTask PersistAsync(IAsyncBinaryWriter writer, CancellationToken token)
     {
@@ -171,12 +179,29 @@ public sealed class ConfigStateMachine : SimpleStateMachine
                 Timestamp = DateTimeOffset.UtcNow
             };
 
-            var json = JsonSerializer.SerializeToUtf8Bytes(snapshot, SerializerOptions);
+            // Serialize to a temp file, then stream to the writer.
+            // JsonSerializer.SerializeAsync writes in chunks (~16KB), avoiding the 1GB+ byte[] allocation
+            // that SerializeToUtf8Bytes would require. The writer's CopyFromAsync reads in its own chunks.
+            var tempFile = Path.GetTempFileName();
+            try
+            {
+                long fileSize;
+                await using (var writeStream = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920))
+                {
+                    await JsonSerializer.SerializeAsync(writeStream, snapshot, SerializerOptions, token);
+                    fileSize = writeStream.Length;
+                }
 
-            await writer.Invoke(json, token);
+                await using var readStream = new FileStream(tempFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920);
+                await writer.CopyFromAsync(readStream, token: token);
 
-            _logger.LogInformation("Snapshot created: {ConfigCount} configs, {NamespaceCount} namespaces, {AuditCount} audit events, {Size} bytes",
-                snapshot.Configs.Count, snapshot.Namespaces.Count, snapshot.AuditEvents.Count, json.Length);
+                _logger.LogInformation("Snapshot created: {ConfigCount} configs, {NamespaceCount} namespaces, {AuditCount} audit events, {Size} bytes",
+                    snapshot.Configs.Count, snapshot.Namespaces.Count, snapshot.AuditEvents.Count, fileSize);
+            }
+            finally
+            {
+                File.Delete(tempFile);
+            }
         }
         catch (Exception ex)
         {
