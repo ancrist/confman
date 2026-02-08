@@ -15,6 +15,8 @@ public sealed record SetConfigCommand : ICommand
     public required string Author { get; init; }
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
+    public int EstimatedBytes => 64 + (Value?.Length ?? 0);
+
     public async Task ApplyAsync(IConfigStore store, bool auditEnabled = true, CancellationToken ct = default)
     {
         var entry = new ConfigEntry

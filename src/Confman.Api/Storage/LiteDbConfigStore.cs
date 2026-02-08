@@ -27,12 +27,12 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
         _logApplies = config.GetValue<bool>("Storage:LogApplies", false);
         _auditEnabled = config.GetValue<bool>("Audit:Enabled", true);
 
-        // Cap concurrent LiteDB access to prevent "Maximum number of transactions reached" errors.
-        // LiteDB direct mode has a hard transaction limit (~100). Under concurrent load (e.g., 10+ Locust users),
-        // requests can exceed this. The semaphore queues excess requests instead of failing them.
-        var maxConcurrency = config.GetValue<int>("Storage:MaxConcurrency", 10);
+        // Serialize all LiteDB access. Direct mode doesn't safely support concurrent reads and writes
+        // on the same pages — large documents (e.g., 1MB values) trigger "pages in memory store must be
+        // non-shared" when FindAll() overlaps with an in-progress write. Throughput impact is negligible
+        // because Raft consensus (~2ms) is the bottleneck, not LiteDB ops (<1ms).
+        var maxConcurrency = config.GetValue<int>("Storage:MaxConcurrency", 1);
         _dbSemaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
-        _logger.LogInformation("LiteDB max concurrency: {MaxConcurrency}", maxConcurrency);
 
         if (!_auditEnabled)
             _logger.LogWarning("Audit logging is DISABLED - no audit events will be persisted");

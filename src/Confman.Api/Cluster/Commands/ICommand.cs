@@ -12,6 +12,7 @@ namespace Confman.Api.Cluster.Commands;
 [JsonDerivedType(typeof(DeleteConfigCommand), "delete_config")]
 [JsonDerivedType(typeof(SetNamespaceCommand), "set_namespace")]
 [JsonDerivedType(typeof(DeleteNamespaceCommand), "delete_namespace")]
+[JsonDerivedType(typeof(BatchCommand), "batch")]
 public interface ICommand
 {
     /// <summary>
@@ -22,4 +23,9 @@ public interface ICommand
     /// <param name="auditEnabled">Whether to create audit events.</param>
     /// <param name="ct">Cancellation token.</param>
     Task ApplyAsync(IConfigStore store, bool auditEnabled = true, CancellationToken ct = default);
+
+    /// <summary>
+    /// Estimated serialized size in bytes. Used by BatchingRaftService to enforce payload limits.
+    /// </summary>
+    int EstimatedBytes => 64;
 }

@@ -88,9 +88,12 @@ public sealed class ConfigStateMachine : SimpleStateMachine
                     command.GetType().Name, entry.Index, entry.Term, sw.ElapsedMilliseconds);
             }
 
-            // Trigger snapshot after every N command entries to compact WAL
-            // We await command.ApplyAsync above, so LiteDB state is guaranteed persisted
-            _entriesSinceSnapshot++;
+            // Trigger snapshot after every N command entries to compact WAL.
+            // We await command.ApplyAsync above, so LiteDB state is guaranteed persisted.
+            // BatchCommand counts by inner command count — WAL/LiteDB growth is proportional to commands, not log entries.
+            // Safe: DotNext guarantees sequential ApplyAsync — no concurrent access to _entriesSinceSnapshot.
+            var commandCount = command is BatchCommand batch ? batch.Commands.Count : 1;
+            _entriesSinceSnapshot += commandCount;
             if (_entriesSinceSnapshot >= _snapshotInterval)
             {
                 _logger.LogInformation("Triggering snapshot after {Count} entries (index {Index})",

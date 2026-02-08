@@ -51,7 +51,7 @@ try
 
     // Register cluster services
     builder.Services.AddSingleton<IClusterMemberLifetime, ClusterLifetime>();
-    builder.Services.AddScoped<IRaftService, RaftService>();
+    builder.Services.AddSingleton<IRaftService, BatchingRaftService>();
 
     // Configure WriteAheadLog options for the state machine
     var dataPath = builder.Configuration["Storage:DataPath"] ?? "./data";
