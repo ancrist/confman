@@ -6,6 +6,7 @@ using Confman.Api.Storage;
 using DotNext.Net.Cluster.Consensus.Raft;
 using DotNext.Net.Cluster.Consensus.Raft.Http;
 using Microsoft.AspNetCore.Connections;
+using OpenTelemetry.Metrics;
 using Serilog;
 
 [assembly: Experimental("DOTNEXT001")]
@@ -146,6 +147,14 @@ try
     // Configure RFC 7807 Problem Details
     builder.Services.AddProblemDetails();
 
+    // Expose DotNext WAL and Raft metrics via Prometheus at /metrics
+    builder.Services.AddOpenTelemetry()
+        .WithMetrics(metrics => metrics
+            .AddMeter("DotNext.IO.WriteAheadLog")
+            .AddMeter("DotNext.Net.Cluster.Consensus.Raft.Server")
+            .AddMeter("DotNext.Net.Cluster.Consensus.Raft.Client")
+            .AddPrometheusExporter());
+
     // Add CORS for dashboard
     builder.Services.AddCors(options =>
     {
@@ -226,6 +235,8 @@ try
     }).AllowAnonymous();
 
     app.MapControllers();
+
+    app.MapPrometheusScrapingEndpoint();
 
     // Restore state machine from WAL before starting
     await app.RestoreStateAsync<ConfigStateMachine>(CancellationToken.None);

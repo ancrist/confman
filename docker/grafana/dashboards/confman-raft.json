@@ -1,0 +1,299 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Raft Consensus",
+      "type": "row"
+    },
+    {
+      "title": "Raft State Transitions",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "id": 1,
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": { "mode": "normal" }
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "leader" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "candidate" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "follower" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "rate(dotnext_net_cluster_consensus_raft_server_transitions_to_leader_count_total[1m])",
+          "legendFormat": "{{node}} leader"
+        },
+        {
+          "expr": "rate(dotnext_net_cluster_consensus_raft_server_transitions_to_candidate_count_total[1m])",
+          "legendFormat": "{{node}} candidate"
+        },
+        {
+          "expr": "rate(dotnext_net_cluster_consensus_raft_server_transitions_to_follower_count_total[1m])",
+          "legendFormat": "{{node}} follower"
+        }
+      ]
+    },
+    {
+      "title": "Heartbeat Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "id": 2,
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(dotnext_net_cluster_consensus_raft_server_incoming_heartbeats_count_total[1m])",
+          "legendFormat": "{{node}}"
+        }
+      ]
+    },
+    {
+      "title": "Broadcast Time (Leader → Followers)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "id": 3,
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(dotnext_net_cluster_consensus_raft_server_broadcast_time_ms_sum[1m]) / rate(dotnext_net_cluster_consensus_raft_server_broadcast_time_ms_count[1m])",
+          "legendFormat": "{{node}} avg"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(dotnext_net_cluster_consensus_raft_server_broadcast_time_ms_bucket[1m]))",
+          "legendFormat": "{{node}} p99"
+        }
+      ]
+    },
+    {
+      "title": "Raft Client Response Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 9 },
+      "id": 4,
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(dotnext_net_cluster_consensus_raft_client_response_time_ms_sum[1m]) / rate(dotnext_net_cluster_consensus_raft_client_response_time_ms_count[1m])",
+          "legendFormat": "{{node}} avg"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(dotnext_net_cluster_consensus_raft_client_response_time_ms_bucket[1m]))",
+          "legendFormat": "{{node}} p99"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 101,
+      "title": "Write-Ahead Log",
+      "type": "row"
+    },
+    {
+      "title": "WAL Append Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 18 },
+      "id": 5,
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(dotnext_io_writeaheadlog_entries_append_count_total[1m])",
+          "legendFormat": "{{node}} append"
+        }
+      ]
+    },
+    {
+      "title": "WAL Commit & Flush Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 18 },
+      "id": 6,
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(dotnext_io_writeaheadlog_entries_commit_count_total[1m])",
+          "legendFormat": "{{node}} commit"
+        },
+        {
+          "expr": "rate(dotnext_io_writeaheadlog_entries_flush_count_total[1m])",
+          "legendFormat": "{{node}} flush"
+        }
+      ]
+    },
+    {
+      "title": "WAL Apply Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 18 },
+      "id": 7,
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(dotnext_io_writeaheadlog_entries_apply_count_total[1m])",
+          "legendFormat": "{{node}}"
+        }
+      ]
+    },
+    {
+      "title": "WAL Flush Duration",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "id": 8,
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(dotnext_io_writeaheadlog_entries_flush_duration_ms_sum[1m]) / rate(dotnext_io_writeaheadlog_entries_flush_duration_ms_count[1m])",
+          "legendFormat": "{{node}} avg"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(dotnext_io_writeaheadlog_entries_flush_duration_ms_bucket[1m]))",
+          "legendFormat": "{{node}} p99"
+        }
+      ]
+    },
+    {
+      "title": "WAL Apply Duration",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "id": 9,
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(dotnext_io_writeaheadlog_entries_apply_duration_ms_sum[1m]) / rate(dotnext_io_writeaheadlog_entries_apply_duration_ms_count[1m])",
+          "legendFormat": "{{node}} avg"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(dotnext_io_writeaheadlog_entries_apply_duration_ms_bucket[1m]))",
+          "legendFormat": "{{node}} p99"
+        }
+      ]
+    },
+    {
+      "title": "WAL Bytes Appended",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
+      "id": 10,
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(dotnext_io_writeaheadlog_entries_append_bytes_bytes_sum[1m])",
+          "legendFormat": "{{node}}"
+        }
+      ]
+    },
+    {
+      "title": "WAL Bytes Deleted (Compaction)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 34 },
+      "id": 11,
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(dotnext_io_writeaheadlog_entries_deleted_bytes_bytes_sum[1m])",
+          "legendFormat": "{{node}}"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["confman", "raft", "dotnext"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Confman Raft Cluster",
+  "uid": "confman-raft",
+  "version": 1
+}

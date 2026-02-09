@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: confman
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - host.docker.internal:6100
+        labels:
+          node: node1
+      - targets:
+          - host.docker.internal:6200
+        labels:
+          node: node2
+      - targets:
+          - host.docker.internal:6300
+        labels:
+          node: node3
