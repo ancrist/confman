@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using System.Text.Json;
 using Confman.Api.Cluster.Commands;
 using DotNext.IO;
 using DotNext.Net.Cluster.Consensus.Raft;
+using MessagePack;
 using Microsoft.AspNetCore.Connections;
 
 namespace Confman.Api.Cluster;
@@ -76,8 +76,8 @@ public class RaftService : IRaftService
         var sw = Stopwatch.StartNew();
         try
         {
-            // Serialize directly to UTF-8 bytes (avoids intermediate string allocation)
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(command);
+            // Serialize as ICommand (not concrete type) to preserve Union discriminator
+            var bytes = MessagePackSerializer.Serialize<ICommand>(command, ConfmanSerializerOptions.Instance, ct);
 
             _logger.LogDebug("Replicating command: {CommandType}, size: {Size} bytes",
                 command.GetType().Name, bytes.Length);

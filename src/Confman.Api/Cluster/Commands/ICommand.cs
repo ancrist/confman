@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Confman.Api.Storage;
+using MessagePack;
 
 namespace Confman.Api.Cluster.Commands;
 
@@ -12,6 +13,12 @@ namespace Confman.Api.Cluster.Commands;
 [JsonDerivedType(typeof(DeleteConfigCommand), "delete_config")]
 [JsonDerivedType(typeof(SetNamespaceCommand), "set_namespace")]
 [JsonDerivedType(typeof(DeleteNamespaceCommand), "delete_namespace")]
+[JsonDerivedType(typeof(BatchCommand), "batch")]
+[Union(0, typeof(SetConfigCommand))]
+[Union(1, typeof(DeleteConfigCommand))]
+[Union(2, typeof(SetNamespaceCommand))]
+[Union(3, typeof(DeleteNamespaceCommand))]
+[Union(4, typeof(BatchCommand))]
 public interface ICommand
 {
     /// <summary>
@@ -22,4 +29,9 @@ public interface ICommand
     /// <param name="auditEnabled">Whether to create audit events.</param>
     /// <param name="ct">Cancellation token.</param>
     Task ApplyAsync(IConfigStore store, bool auditEnabled = true, CancellationToken ct = default);
+
+    /// <summary>
+    /// Estimated serialized size in bytes. Used by BatchingRaftService to enforce payload limits.
+    /// </summary>
+    int EstimatedBytes => 64;
 }

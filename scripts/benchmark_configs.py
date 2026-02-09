@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["requests"]
+# ///
 """
 Benchmark script for Confman API.
 Supports both read and write scenarios at configurable rates.
@@ -326,9 +330,9 @@ def calculate_json_overhead(namespace: str, key_template: str = "config-00000") 
     return len(template)
 
 
-def run_write_benchmark(leader_url: str, namespace: str, count: int, rate: float, api_key: str, payload_size: int = 100, unlimited: bool = False):
+def run_write_benchmark(leader_url: str, namespace: str, count: int, rate: float, api_key: str, payload_size: int = 100, unlimited: bool = False, concurrency: int = 1):
     """Run write benchmark creating configs at the specified rate."""
-    delay = 0 if unlimited else (1.0 / rate)
+    delay = 0 if (unlimited or concurrency > 1) else (1.0 / rate)
 
     # Calculate JSON overhead for WAL entry
     json_overhead = calculate_json_overhead(namespace)
@@ -345,7 +349,9 @@ def run_write_benchmark(leader_url: str, namespace: str, count: int, rate: float
 
     # Print header with payload size info
     print(f"\n{'='*60}")
-    if unlimited:
+    if concurrency > 1:
+        print(f"Confman Benchmark - {Colors.YELLOW}WRITE{Colors.RESET} (CONCURRENT x{concurrency})")
+    elif unlimited:
         print(f"Confman Benchmark - {Colors.YELLOW}WRITE{Colors.RESET} (UNLIMITED)")
     else:
         print(f"Confman Benchmark - {Colors.YELLOW}WRITE{Colors.RESET}")
@@ -353,7 +359,9 @@ def run_write_benchmark(leader_url: str, namespace: str, count: int, rate: float
     print(f"Target:       {leader_url}")
     print(f"Namespace:    {namespace}")
     print(f"Config count: {count}")
-    if unlimited:
+    if concurrency > 1:
+        print(f"Concurrency:  {Colors.YELLOW}{concurrency} parallel requests{Colors.RESET}")
+    if unlimited or concurrency > 1:
         print(f"Rate:         {Colors.YELLOW}UNLIMITED (as fast as possible){Colors.RESET}")
     else:
         print(f"Target rate:  {rate} req/s")
@@ -363,8 +371,6 @@ def run_write_benchmark(leader_url: str, namespace: str, count: int, rate: float
     print(f"Total entry:  {total_entry_size} bytes ({total_entry_size/1024:.2f} KB)")
     print(f"Actual JSON:  {len(example_json)} bytes")
     print(f"{'='*60}")
-    print(f"\nExample WAL entry JSON ({len(example_json)} bytes):")
-    print(f"{example_json}")
     print(f"{'='*60}\n")
 
     # Create namespace first
@@ -372,46 +378,87 @@ def run_write_benchmark(leader_url: str, namespace: str, count: int, rate: float
         print("Failed to create namespace, aborting benchmark")
         sys.exit(1)
 
-    print(f"\nCreating {count} configs at {rate} req/s (payload: {payload_size} bytes)...\n")
+    if concurrency > 1:
+        print(f"\nCreating {count} configs with {concurrency} concurrent writers (payload: {payload_size} bytes)...\n")
+    else:
+        print(f"\nCreating {count} configs at {rate} req/s (payload: {payload_size} bytes)...\n")
 
     successes = 0
     failures = 0
     latencies = []
+    completed = 0
+    print_lock = Lock()
 
-    start_time = time.perf_counter()
-
+    # Pre-generate all requests
+    requests_to_make = []
     for i in range(count):
         key = f"config-{i:05d}"
         value = generate_payload(payload_size, i)
+        requests_to_make.append((i, key, value))
 
-        result = create_config(leader_url, namespace, key, value, api_key)
-        latencies.append(result["latency_ms"])
+    def execute_write(args):
+        """Execute a single write request."""
+        idx, key, value = args
+        return idx, create_config(leader_url, namespace, key, value, api_key)
 
-        if result["success"]:
-            successes += 1
-            status = f"{Colors.GREEN}✓{Colors.RESET}"
-            http_status = f"{Colors.GREEN}HTTP {result['status_code']}{Colors.RESET}"
-        else:
-            failures += 1
-            status = f"{Colors.RED}✗{Colors.RESET}"
-            http_status = f"{Colors.RED}HTTP {result['status_code']}{Colors.RESET}"
+    start_time = time.perf_counter()
 
-        # Print every 100th request (or first/last) to avoid console spam
-        if (i + 1) % 100 == 0 or i == 0 or i == count - 1:
-            value_preview = result['value'][:25] if result['value'] else ''
-            print(f"  [{i+1:4d}/{count}] {status} PUT {result['path']} | key={result['key']} | value={value_preview}... | {http_status} | {result['latency_ms']:.1f}ms")
+    if concurrency > 1:
+        # Concurrent execution with ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = {executor.submit(execute_write, req): req for req in requests_to_make}
 
-        # Sleep to maintain rate (except for last iteration, or if unlimited)
-        if not unlimited and i < count - 1:
-            time.sleep(delay)
+            for future in as_completed(futures):
+                idx, result = future.result()
+                latencies.append(result["latency_ms"])
+
+                with print_lock:
+                    completed += 1
+                    if result["success"]:
+                        successes += 1
+                        status = f"{Colors.GREEN}✓{Colors.RESET}"
+                        http_status = f"{Colors.GREEN}HTTP {result['status_code']}{Colors.RESET}"
+                    else:
+                        failures += 1
+                        status = f"{Colors.RED}✗{Colors.RESET}"
+                        http_status = f"{Colors.RED}HTTP {result['status_code']}{Colors.RESET}"
+
+                    # Print progress every 100 requests
+                    if completed % 100 == 0 or completed == 1 or completed == count:
+                        value_preview = result['value'][:25] if result['value'] else ''
+                        print(f"  [{completed:4d}/{count}] {status} PUT {result['path']} | key={result['key']} | value={value_preview}... | {http_status} | {result['latency_ms']:.1f}ms")
+    else:
+        # Sequential execution
+        for i, key, value in requests_to_make:
+            result = create_config(leader_url, namespace, key, value, api_key)
+            latencies.append(result["latency_ms"])
+
+            if result["success"]:
+                successes += 1
+                status = f"{Colors.GREEN}✓{Colors.RESET}"
+                http_status = f"{Colors.GREEN}HTTP {result['status_code']}{Colors.RESET}"
+            else:
+                failures += 1
+                status = f"{Colors.RED}✗{Colors.RESET}"
+                http_status = f"{Colors.RED}HTTP {result['status_code']}{Colors.RESET}"
+
+            # Print every 100th request (or first/last) to avoid console spam
+            if (i + 1) % 100 == 0 or i == 0 or i == count - 1:
+                value_preview = result['value'][:25] if result['value'] else ''
+                print(f"  [{i+1:4d}/{count}] {status} PUT {result['path']} | key={result['key']} | value={value_preview}... | {http_status} | {result['latency_ms']:.1f}ms")
+
+            # Sleep to maintain rate (except for last iteration, or if unlimited)
+            if not unlimited and i < count - 1:
+                time.sleep(delay)
 
     total_time = time.perf_counter() - start_time
 
-    # For unlimited mode, show actual achieved rate
-    if unlimited:
+    # Show results
+    if unlimited or concurrency > 1:
         actual_rate = count / total_time
+        mode_label = f"CONCURRENT x{concurrency}" if concurrency > 1 else "UNLIMITED"
         print(f"\n{'='*60}")
-        print(f"Results - WRITE (UNLIMITED)")
+        print(f"Results - WRITE ({mode_label})")
         print(f"{'='*60}")
         print(f"Total time:    {total_time:.2f}s")
         print(f"Successes:     {successes}")
@@ -680,6 +727,12 @@ def main():
         action="store_true",
         help="Run at maximum speed (no rate limiting)"
     )
+    write_parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="Number of concurrent write requests (default: 1 = sequential). Use with --unlimited to measure batching throughput"
+    )
 
     # Read subcommand (namespace is optional - reads from all namespaces if not specified)
     read_parser = subparsers.add_parser("read", help="Read benchmark - read configs")
@@ -749,7 +802,8 @@ def main():
             sys.exit(1)
 
         unlimited = getattr(args, 'unlimited', False)
-        run_write_benchmark(target_url, args.namespace, args.count, args.rate, args.api_key, payload_size, unlimited)
+        concurrency = getattr(args, 'concurrency', 1)
+        run_write_benchmark(target_url, args.namespace, args.count, args.rate, args.api_key, payload_size, unlimited, concurrency)
 
     elif args.mode == "read":
         if hasattr(args, 'any_node') and args.any_node:

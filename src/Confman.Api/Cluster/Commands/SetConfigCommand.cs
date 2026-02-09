@@ -1,19 +1,23 @@
 using Confman.Api.Models;
 using Confman.Api.Storage;
+using MessagePack;
 
 namespace Confman.Api.Cluster.Commands;
 
 /// <summary>
 /// Command to set (create or update) a configuration entry.
 /// </summary>
+[MessagePackObject]
 public sealed record SetConfigCommand : ICommand
 {
-    public required string Namespace { get; init; }
-    public required string Key { get; init; }
-    public required string Value { get; init; }
-    public string Type { get; init; } = "string";
-    public required string Author { get; init; }
-    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    [Key(0)] public required string Namespace { get; init; }
+    [Key(1)] public required string Key { get; init; }
+    [Key(2)] public required string Value { get; init; }
+    [Key(3)] public string Type { get; init; } = "string";
+    [Key(4)] public required string Author { get; init; }
+    [Key(5)] public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+
+    [IgnoreMember] public int EstimatedBytes => 64 + (Value?.Length ?? 0);
 
     public async Task ApplyAsync(IConfigStore store, bool auditEnabled = true, CancellationToken ct = default)
     {

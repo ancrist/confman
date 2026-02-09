@@ -1,10 +1,10 @@
 using System.Buffers;
 using System.Diagnostics;
-using System.Text.Json;
 using Confman.Api.Cluster.Commands;
 using Confman.Api.Storage;
 using DotNext.IO;
 using DotNext.Net.Cluster.Consensus.Raft.StateMachine;
+using MessagePack;
 
 namespace Confman.Api.Cluster;
 
@@ -14,8 +14,6 @@ namespace Confman.Api.Cluster;
 /// </summary>
 public sealed class ConfigStateMachine : SimpleStateMachine
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
-
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ConfigStateMachine> _logger;
     private readonly bool _logDataStoreApplies;
@@ -88,9 +86,12 @@ public sealed class ConfigStateMachine : SimpleStateMachine
                     command.GetType().Name, entry.Index, entry.Term, sw.ElapsedMilliseconds);
             }
 
-            // Trigger snapshot after every N command entries to compact WAL
-            // We await command.ApplyAsync above, so LiteDB state is guaranteed persisted
-            _entriesSinceSnapshot++;
+            // Trigger snapshot after every N command entries to compact WAL.
+            // We await command.ApplyAsync above, so LiteDB state is guaranteed persisted.
+            // BatchCommand counts by inner command count — WAL/LiteDB growth is proportional to commands, not log entries.
+            // Safe: DotNext guarantees sequential ApplyAsync — no concurrent access to _entriesSinceSnapshot.
+            var commandCount = command is BatchCommand batch ? batch.Commands.Count : 1;
+            _entriesSinceSnapshot += commandCount;
             if (_entriesSinceSnapshot >= _snapshotInterval)
             {
                 _logger.LogInformation("Triggering snapshot after {Count} entries (index {Index})",
@@ -111,15 +112,22 @@ public sealed class ConfigStateMachine : SimpleStateMachine
     /// <summary>
     /// Restores state from a snapshot file.
     /// Deserializes and restores all configs, namespaces, and audit events.
+    /// Streams from disk to avoid loading the entire snapshot into a single byte[].
     /// </summary>
     protected override async ValueTask RestoreAsync(FileInfo snapshotFile, CancellationToken token)
     {
-        _logger.LogInformation("Restoring from snapshot: {SnapshotFile}", snapshotFile.FullName);
+        _logger.LogInformation("Restoring from snapshot: {SnapshotFile} ({Size} bytes)", snapshotFile.FullName, snapshotFile.Length);
 
         try
         {
-            var json = await File.ReadAllBytesAsync(snapshotFile.FullName, token);
-            var snapshot = JsonSerializer.Deserialize<SnapshotData>(json);
+            await using var stream = snapshotFile.Open(new FileStreamOptions
+            {
+                Mode = FileMode.Open,
+                Access = FileAccess.Read,
+                Share = FileShare.Read,
+                BufferSize = 81920,
+            });
+            var snapshot = await MessagePackSerializer.DeserializeAsync<SnapshotData>(stream, ConfmanSerializerOptions.Instance, token);
 
             if (snapshot is null)
             {
@@ -127,7 +135,7 @@ public sealed class ConfigStateMachine : SimpleStateMachine
                 return;
             }
 
-            if (snapshot.Version != 1)
+            if (snapshot.Version != 2)
             {
                 throw new InvalidOperationException(
                     $"Unsupported snapshot version: {snapshot.Version}. This node cannot restore from a snapshot " +
@@ -149,7 +157,8 @@ public sealed class ConfigStateMachine : SimpleStateMachine
 
     /// <summary>
     /// Persists current state to a snapshot.
-    /// Serializes all configs, namespaces, and audit events to JSON.
+    /// Streams JSON through a temp file to avoid allocating the entire serialized payload in memory.
+    /// With large datasets (e.g. 500 × 1MB configs), the JSON can exceed 1GB — too large for a single byte[].
     /// </summary>
     protected override async ValueTask PersistAsync(IAsyncBinaryWriter writer, CancellationToken token)
     {
@@ -161,19 +170,35 @@ public sealed class ConfigStateMachine : SimpleStateMachine
 
             var snapshot = new SnapshotData
             {
-                Version = 1,
+                Version = 2,
                 Configs = await store.GetAllConfigsAsync(token),
                 Namespaces = [.. (await store.ListNamespacesAsync(token))],
                 AuditEvents = await store.GetAllAuditEventsAsync(token),
                 Timestamp = DateTimeOffset.UtcNow
             };
 
-            var json = JsonSerializer.SerializeToUtf8Bytes(snapshot, SerializerOptions);
+            // Serialize to a temp file, then stream to the writer.
+            // MessagePack streams in chunks, avoiding the 1GB+ byte[] allocation.
+            var tempFile = Path.GetTempFileName();
+            try
+            {
+                long fileSize;
+                await using (var writeStream = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920))
+                {
+                    await MessagePackSerializer.SerializeAsync(writeStream, snapshot, ConfmanSerializerOptions.Instance, token);
+                    fileSize = writeStream.Length;
+                }
 
-            await writer.Invoke(json, token);
+                await using var readStream = new FileStream(tempFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920);
+                await writer.CopyFromAsync(readStream, token: token);
 
-            _logger.LogInformation("Snapshot created: {ConfigCount} configs, {NamespaceCount} namespaces, {AuditCount} audit events, {Size} bytes",
-                snapshot.Configs.Count, snapshot.Namespaces.Count, snapshot.AuditEvents.Count, json.Length);
+                _logger.LogInformation("Snapshot created: {ConfigCount} configs, {NamespaceCount} namespaces, {AuditCount} audit events, {Size} bytes",
+                    snapshot.Configs.Count, snapshot.Namespaces.Count, snapshot.AuditEvents.Count, fileSize);
+            }
+            finally
+            {
+                File.Delete(tempFile);
+            }
         }
         catch (Exception ex)
         {
@@ -190,23 +215,27 @@ public sealed class ConfigStateMachine : SimpleStateMachine
 
         var bytes = payload.ToArray();
 
-        // Skip non-JSON entries (Raft internal entries like config changes)
-        if (bytes.Length == 0 || bytes[0] != (byte)'{')
+        // DotNext WAL may prepend null bytes (0x00) as padding under concurrent load.
+        // Skip them to find the actual MessagePack payload start.
+        var offset = 0;
+        while (offset < bytes.Length && bytes[offset] == 0x00)
+            offset++;
+
+        if (offset >= bytes.Length)
         {
-            _logger.LogDebug("Skipping non-JSON entry, firstByte=0x{FirstByte:X2}",
-                bytes.Length > 0 ? bytes[0] : 0);
+            _logger.LogDebug("Skipping null-only entry ({Length} bytes)", bytes.Length);
             return null;
         }
 
         try
         {
-            return JsonSerializer.Deserialize<ICommand>(bytes);
+            var span = new ReadOnlyMemory<byte>(bytes, offset, bytes.Length - offset);
+            return MessagePackSerializer.Deserialize<ICommand>(span, ConfmanSerializerOptions.Instance);
         }
-        catch (JsonException ex)
+        catch (MessagePackSerializationException ex)
         {
-            var jsonString = System.Text.Encoding.UTF8.GetString(bytes);
-            _logger.LogWarning(ex, "JSON deserialization failed. Payload ({Length} bytes): {Payload}",
-                bytes.Length, jsonString.Length > 500 ? jsonString[..500] + "..." : jsonString);
+            _logger.LogWarning(ex, "MessagePack deserialization failed ({Length} bytes, offset {Offset}, firstByte=0x{FirstByte:X2})",
+                bytes.Length, offset, bytes[offset]);
             return null;
         }
     }

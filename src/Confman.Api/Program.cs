@@ -18,6 +18,11 @@ try
 {
     var builder = WebApplication.CreateBuilder(args);
 
+    // Remove Kestrel body size limit. The default (30MB) is too small for Raft AppendEntries RPCs,
+    // which bundle multiple log entries into a single HTTP request during replication.
+    // With large config values (e.g. 1MB), the accumulated payload easily exceeds 30MB.
+    builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = null);
+
     // Load node-specific configuration based on CONFMAN_NODE_ID environment variable
     var nodeId = Environment.GetEnvironmentVariable("CONFMAN_NODE_ID");
     if (!string.IsNullOrEmpty(nodeId))
@@ -51,7 +56,7 @@ try
 
     // Register cluster services
     builder.Services.AddSingleton<IClusterMemberLifetime, ClusterLifetime>();
-    builder.Services.AddScoped<IRaftService, RaftService>();
+    builder.Services.AddSingleton<IRaftService, BatchingRaftService>();
 
     // Configure WriteAheadLog options for the state machine
     var dataPath = builder.Configuration["Storage:DataPath"] ?? "./data";

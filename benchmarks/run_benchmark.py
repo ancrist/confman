@@ -33,7 +33,7 @@ except ImportError:
 
 TIERS: dict[str, dict[str, int]] = {
     "small": {"namespaces": 5, "keys_per_ns": 20, "payload_size": 1024},       # 1 KB, 100 entries
-    "large": {"namespaces": 10, "keys_per_ns": 50, "payload_size": 1024},      # 10 KB, 500 entries
+    "large": {"namespaces": 10, "keys_per_ns": 50, "payload_size": 1024000},      # 1 MB, 500 entries
     "xlarge": {"namespaces": 20, "keys_per_ns": 500, "payload_size": 1024},    # 1 KB, 10000 entries
 }
 CLUSTER_PORTS = [6100, 6200, 6300]
@@ -254,7 +254,7 @@ def render_results(output_dir: Path, tier: str) -> None:
         return
 
     # Define scenario order (matches execution order)
-    scenario_order = ["write-1u", "write-10u", "read-1u", "read-10u", "mixed-10u"]
+    scenario_order = ["write-1u", "write-10u", "write-stress-10u", "read-1u", "read-10u", "mixed-10u"]
 
     # Find all stats CSV files for this tier
     stats_files = list(output_dir.glob(f"{tier}-*_stats.csv"))
@@ -310,7 +310,8 @@ def render_results(output_dir: Path, tier: str) -> None:
 
     # Calculate and show read vs write comparison
     read_scenarios = [r for r in results if "read" in r["Scenario"]]
-    write_scenarios = [r for r in results if "write" in r["Scenario"] and "mixed" not in r["Scenario"]]
+    write_scenarios = [r for r in results if "write" in r["Scenario"] and "mixed" not in r["Scenario"] and "stress" not in r["Scenario"]]
+    stress_scenarios = [r for r in results if "stress" in r["Scenario"]]
 
     if read_scenarios and write_scenarios:
         # Extract numeric throughput for comparison
@@ -322,9 +323,12 @@ def render_results(output_dir: Path, tier: str) -> None:
         ratio = max_read / max_write if max_write > 0 else 0
 
         print(f"\n  Key Metrics:")
-        print(f"    Peak read throughput:  {max_read:,.0f} req/s")
-        print(f"    Peak write throughput: {max_write:,.0f} req/s")
-        print(f"    Read/Write ratio:      {ratio:.0f}x (reads are {ratio:.0f}x faster)")
+        print(f"    Peak read throughput:   {max_read:,.0f} req/s")
+        print(f"    Peak write throughput:  {max_write:,.0f} req/s")
+        if stress_scenarios:
+            max_stress = max(parse_throughput(r["Throughput"]) for r in stress_scenarios)
+            print(f"    Peak stress write:      {max_stress:,.0f} req/s (no think time)")
+        print(f"    Read/Write ratio:       {ratio:.0f}x (reads are {ratio:.0f}x faster)")
 
     # Add quick insights
     print(f"\n  Status:")
@@ -443,6 +447,7 @@ def main() -> None:
     scenarios = [
         ("write.py", leader, 1, 15, f"{prefix}-write-1u"),
         ("write.py", leader, 10, 15, f"{prefix}-write-10u"),
+        ("write_stress.py", leader, 10, 15, f"{prefix}-write-stress-10u"),
         ("read.py", args.host, 1, 15, f"{prefix}-read-1u"),
         ("read.py", args.host, 10, 15, f"{prefix}-read-10u"),
         ("mixed.py", args.host, 10, 30, f"{prefix}-mixed-10u"),
