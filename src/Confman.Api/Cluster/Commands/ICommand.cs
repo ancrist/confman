@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Confman.Api.Storage;
+using MessagePack;
 
 namespace Confman.Api.Cluster.Commands;
 
@@ -13,6 +14,11 @@ namespace Confman.Api.Cluster.Commands;
 [JsonDerivedType(typeof(SetNamespaceCommand), "set_namespace")]
 [JsonDerivedType(typeof(DeleteNamespaceCommand), "delete_namespace")]
 [JsonDerivedType(typeof(BatchCommand), "batch")]
+[Union(0, typeof(SetConfigCommand))]
+[Union(1, typeof(DeleteConfigCommand))]
+[Union(2, typeof(SetNamespaceCommand))]
+[Union(3, typeof(DeleteNamespaceCommand))]
+[Union(4, typeof(BatchCommand))]
 public interface ICommand
 {
     /// <summary>

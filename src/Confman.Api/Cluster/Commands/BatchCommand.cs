@@ -1,4 +1,5 @@
 using Confman.Api.Storage;
+using MessagePack;
 
 namespace Confman.Api.Cluster.Commands;
 
@@ -7,14 +8,15 @@ namespace Confman.Api.Cluster.Commands;
 /// One consensus round-trip commits all inner commands, amortizing quorum cost.
 /// Inner commands are applied sequentially to preserve ordering (last writer wins).
 /// </summary>
+[MessagePackObject]
 public sealed record BatchCommand : ICommand
 {
-    public required List<ICommand> Commands { get; init; }
+    [Key(0)] public required List<ICommand> Commands { get; init; }
 
     /// <summary>
     /// Estimated serialized size in bytes, used for batch payload limits.
     /// </summary>
-    public int EstimatedBytes => Commands.Sum(c => c.EstimatedBytes);
+    [IgnoreMember] public int EstimatedBytes => Commands.Sum(c => c.EstimatedBytes);
 
     public async Task ApplyAsync(IConfigStore store, bool auditEnabled = true, CancellationToken ct = default)
     {

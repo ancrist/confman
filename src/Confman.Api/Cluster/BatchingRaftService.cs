@@ -1,9 +1,9 @@
 using System.Diagnostics;
-using System.Text.Json;
 using System.Threading.Channels;
 using Confman.Api.Cluster.Commands;
 using DotNext.IO;
 using DotNext.Net.Cluster.Consensus.Raft;
+using MessagePack;
 using Microsoft.AspNetCore.Connections;
 
 namespace Confman.Api.Cluster;
@@ -184,7 +184,7 @@ public sealed class BatchingRaftService : IRaftService, IAsyncDisposable
                 : new BatchCommand { Commands = batch.Select(p => p.Command).ToList() };
 #pragma warning restore IDE0007
 
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(command);
+            var bytes = MessagePackSerializer.Serialize<ICommand>(command, ConfmanSerializerOptions.Instance, ct);
 
             _logger.LogDebug(
                 "Replicating batch: {Count} commands, {Size} bytes",

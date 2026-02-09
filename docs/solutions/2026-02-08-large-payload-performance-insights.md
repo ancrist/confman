@@ -1,14 +1,14 @@
 ---
-title: "Tier 3 Performance Insights — Large Payload Stress Testing"
+title: "Large Payload Performance Insights"
 category: performance
-tags: [raft, snapshot, wal, litedb, large-payloads, election-timeout, kestrel, oom, performance]
+tags: [raft, snapshot, wal, litedb, large-payloads, election-timeout, kestrel, oom, performance, write-amplification]
 module: Confman.Api
 date: 2026-02-08
 ---
 
-# Tier 3 Performance Insights
+# Large Payload Performance Insights
 
-Insights gathered during Tier 3 write-batching implementation and 1MB payload stress testing.
+Insights gathered during large-payload stress testing (1MB configs, 1000-entry benchmarks).
 
 | # | Area | Insight | Impact | Fix Applied |
 |---|------|---------|--------|-------------|
@@ -21,6 +21,7 @@ Insights gathered during Tier 3 write-batching implementation and 1MB payload st
 | 7 | **Snapshot Scaling** | Snapshots are O(total data), not O(delta). Every snapshot serializes the entire dataset. With N x 1MB configs, each snapshot writes ~N MB to disk | Each snapshot gets more expensive as data grows. Snapshot at 700 entries = 733MB to serialize and write | Architectural limit of full-state snapshot model -- no code fix, just awareness |
 | 8 | **Raft Timeout Invariant** | The relationship `snapshot_time < election_timeout < request_timeout` must hold. Snapshot time is roughly 1ms per config entry, which gives a planning formula | Violating this invariant cascades: missed heartbeats, election, disrupted replication, larger AppendEntries, request timeout, follower marked unavailable | Documented tuning guidelines by payload size in `docs/solutions/` |
 | 9 | **Shutdown Race** | ASP.NET DI disposes `LiteDbConfigStore` (and its `SemaphoreSlim`) while the Raft state machine is still applying pending log entries | `ObjectDisposedException` on `SemaphoreSlim.Release()` during Ctrl+C | `_dbSemaphore.Wait()` in `Dispose()` drains in-flight operations before disposing |
+| 10 | **Write Amplification** | Writing 1000 x 1MB configs produces ~10 GB disk I/O per node (~10x amplification). Three layers stack: Raft WAL (~1.5 GB), LiteDB + journal (~2 GB), and full-state snapshots (~5.5 GB cumulative as each snapshot grows with dataset size). Snapshot I/O dominates because total snapshot bytes = sum(100 + 200 + ... + 1000) MB | Sustained high disk I/O during bulk writes. SSD wear consideration for long-running production clusters with large values | Architectural limit of full-state snapshots -- total snapshot I/O grows O(n^2) with entry count. Incremental snapshots would reduce to O(n) but add significant complexity. For config-sized workloads this tradeoff is acceptable |
 
 ## Tuning Guidelines by Payload Size
 
@@ -30,6 +31,17 @@ Insights gathered during Tier 3 write-batching implementation and 1MB payload st
 | 10-100 KB   | 500             | 500-1500 ms     | 5s             | Moderate payloads |
 | 100 KB-1 MB | 100             | 1000-3000 ms    | 10s            | Large payloads, stress test territory |
 | > 1 MB      | 50              | 2000-5000 ms    | 30s            | Extreme -- consider external blob storage |
+
+## Write Amplification Breakdown (1000 x 1MB benchmark)
+
+| Layer | Estimated I/O | Why |
+|-------|--------------|-----|
+| Raft WAL | ~1.5 GB | Each 1MB entry written to WAL with framing. ChunkSize=8MB, ~130 chunks |
+| LiteDB + journal | ~2 GB | State machine applies each entry. `Connection=direct` WAL journal doubles writes |
+| Snapshots | ~5.5 GB | Full-state every 100 entries: 100+200+...+1000 MB = 5500 MB |
+| **Total per node** | **~10 GB** | **~10x write amplification** |
+
+The leader node shows slightly higher read I/O (~32 MB vs ~11 MB) because it reads LiteDB pages to build snapshots and serves AppendEntries to followers.
 
 ## Files Changed
 

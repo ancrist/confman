@@ -1,4 +1,5 @@
 using Confman.Api.Models;
+using MessagePack;
 
 namespace Confman.Api.Cluster;
 
@@ -6,35 +7,36 @@ namespace Confman.Api.Cluster;
 /// Data model for serializing Raft state machine snapshots.
 /// Contains all state needed to fully restore a node.
 /// </summary>
+[MessagePackObject]
 public class SnapshotData
 {
     /// <summary>
     /// Snapshot format version for forward compatibility.
     /// </summary>
-    public int Version { get; set; } = 1;
+    [Key(0)] public int Version { get; set; } = 2;
 
     /// <summary>
     /// All configuration entries in the store.
     /// </summary>
-    public List<ConfigEntry> Configs { get; set; } = [];
+    [Key(1)] public List<ConfigEntry> Configs { get; set; } = [];
 
     /// <summary>
     /// All namespaces in the store.
     /// </summary>
-    public List<Namespace> Namespaces { get; set; } = [];
+    [Key(2)] public List<Namespace> Namespaces { get; set; } = [];
 
     /// <summary>
     /// All audit events in the store.
     /// </summary>
-    public List<AuditEvent> AuditEvents { get; set; } = [];
+    [Key(3)] public List<AuditEvent> AuditEvents { get; set; } = [];
 
     /// <summary>
     /// The Raft log index at which this snapshot was taken.
     /// </summary>
-    public long SnapshotIndex { get; set; }
+    [Key(4)] public long SnapshotIndex { get; set; }
 
     /// <summary>
     /// When this snapshot was created.
     /// </summary>
-    public DateTimeOffset Timestamp { get; set; }
+    [Key(5)] public DateTimeOffset Timestamp { get; set; }
 }
