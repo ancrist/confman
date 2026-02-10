@@ -16,10 +16,10 @@ usage() {
 Usage: $(basename "$0") <command>
 
 Commands:
-  start    Start all 3 nodes in the background
-  stop     Stop all running nodes
-  status   Check health of each node
-  wipe     Stop nodes and delete all data directories
+  start [--tmux]  Start all 3 nodes (--tmux: open log tail panes)
+  stop            Stop all running nodes
+  status          Check health of each node
+  wipe            Stop nodes and delete all data directories
 EOF
     exit 1
 }
@@ -94,6 +94,31 @@ check_status() {
     done
 }
 
+open_tmux_logs() {
+    if ! command -v tmux &>/dev/null; then
+        echo "ERROR: tmux is not installed. Install with: brew install tmux"
+        return 1
+    fi
+
+    local session="confman-logs"
+
+    # Kill existing session for a clean start
+    tmux kill-session -t "$session" 2>/dev/null || true
+
+    # Create session with first node's log
+    tmux new-session -d -s "$session" "tail -f /tmp/confman-node1.log"
+    tmux split-window -v -t "$session" "tail -f /tmp/confman-node2.log"
+    tmux split-window -v -t "$session" "tail -f /tmp/confman-node3.log"
+    tmux select-layout -t "$session" even-vertical
+
+    echo "Attaching to tmux session '${session}'..."
+    if [ -n "${TMUX:-}" ]; then
+        tmux switch-client -t "$session"
+    else
+        tmux attach-session -t "$session"
+    fi
+}
+
 wipe_data() {
     stop_cluster
     echo ""
@@ -116,8 +141,18 @@ wipe_data() {
 # --- Main ---
 [[ $# -lt 1 ]] && usage
 
+USE_TMUX=false
+for arg in "$@"; do
+    [[ "$arg" == "--tmux" ]] && USE_TMUX=true
+done
+
 case "$1" in
-    start)  start_cluster ;;
+    start)
+        start_cluster
+        if [ "$USE_TMUX" = true ]; then
+            open_tmux_logs
+        fi
+        ;;
     stop)   stop_cluster ;;
     status) check_status ;;
     wipe)   wipe_data ;;

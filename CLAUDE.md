@@ -8,6 +8,29 @@ Distributed Configuration Service built on Raft consensus, implemented in .NET C
 
 ---
 
+## Python
+
+Always use `uv` instead of `pip` or `venv` for Python package management and virtual environments.
+
+## .NET / C# Conventions
+
+Use `Console.WriteLine` for diagnostic/logging output in .NET projects, never `Debug.WriteLine`.
+
+## Debugging Guidelines
+
+When debugging distributed systems issues, present hypotheses clearly but do NOT jump to conclusions or blame external libraries (e.g., DotNext) without evidence. Always ask the user to confirm before committing to a root cause theory.
+
+## Interaction Style
+
+- When the user pastes logs or error output, wait for them to finish pasting and provide context before starting analysis. Do not begin investigating partial information.
+- When in plan mode, do not stay in plan mode if the user asks to run commands or implement changes. Switch to execution immediately.
+
+## Confman Project
+
+For the Confman project: default cluster ports are 6100/6200/6300 for HTTP. Always verify port defaults against the actual `cluster.sh` script before using them in benchmarks or tests.
+
+---
+
 ## Data Model
 
 ### Core Entities
