@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Diagnostics;
+using System.Runtime;
 using Confman.Api.Cluster.Commands;
 using Confman.Api.Storage;
 using DotNext.IO;
@@ -166,44 +167,58 @@ public sealed class ConfigStateMachine : SimpleStateMachine
 
         try
         {
-            var store = _serviceProvider.GetRequiredService<IConfigStore>();
+            // Snapshot creation in a separate scope ensures the SnapshotData (which can hold GBs
+            // of config values) is out of scope before we trigger GC. Without this, the JIT may
+            // keep the local alive through the GC.Collect call, preventing collection.
+            await CreateAndStreamSnapshotAsync(writer, token);
 
-            var snapshot = new SnapshotData
-            {
-                Version = 2,
-                Configs = await store.GetAllConfigsAsync(token),
-                Namespaces = [.. (await store.ListNamespacesAsync(token))],
-                AuditEvents = await store.GetAllAuditEventsAsync(token),
-                Timestamp = DateTimeOffset.UtcNow
-            };
-
-            // Serialize to a temp file, then stream to the writer.
-            // MessagePack streams in chunks, avoiding the 1GB+ byte[] allocation.
-            var tempFile = Path.GetTempFileName();
-            try
-            {
-                long fileSize;
-                await using (var writeStream = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920))
-                {
-                    await MessagePackSerializer.SerializeAsync(writeStream, snapshot, ConfmanSerializerOptions.Instance, token);
-                    fileSize = writeStream.Length;
-                }
-
-                await using var readStream = new FileStream(tempFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920);
-                await writer.CopyFromAsync(readStream, token: token);
-
-                _logger.LogInformation("Snapshot created: {ConfigCount} configs, {NamespaceCount} namespaces, {AuditCount} audit events, {Size} bytes",
-                    snapshot.Configs.Count, snapshot.Namespaces.Count, snapshot.AuditEvents.Count, fileSize);
-            }
-            finally
-            {
-                File.Delete(tempFile);
-            }
+            // Compact LOH to reclaim the fragmented address space from large byte[] and string
+            // allocations created during snapshot serialization.
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            _logger.LogDebug("Post-snapshot GC completed");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create snapshot");
             throw;
+        }
+    }
+
+    private async ValueTask CreateAndStreamSnapshotAsync(IAsyncBinaryWriter writer, CancellationToken token)
+    {
+        var store = _serviceProvider.GetRequiredService<IConfigStore>();
+
+        var snapshot = new SnapshotData
+        {
+            Version = 2,
+            Configs = await store.GetAllConfigsAsync(token),
+            Namespaces = [.. await store.ListNamespacesAsync(token)],
+            AuditEvents = await store.GetAllAuditEventsAsync(token),
+            Timestamp = DateTimeOffset.UtcNow
+        };
+
+        // Serialize to a temp file, then stream to the writer.
+        // MessagePack streams in chunks, avoiding the 1GB+ byte[] allocation.
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            long fileSize;
+            await using (var writeStream = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920))
+            {
+                await MessagePackSerializer.SerializeAsync(writeStream, snapshot, ConfmanSerializerOptions.Instance, token);
+                fileSize = writeStream.Length;
+            }
+
+            await using var readStream = new FileStream(tempFile, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920);
+            await writer.CopyFromAsync(readStream, token: token);
+
+            _logger.LogInformation("Snapshot created: {ConfigCount} configs, {NamespaceCount} namespaces, {AuditCount} audit events, {Size} bytes",
+                snapshot.Configs.Count, snapshot.Namespaces.Count, snapshot.AuditEvents.Count, fileSize);
+        }
+        finally
+        {
+            File.Delete(tempFile);
         }
     }
 
@@ -213,29 +228,29 @@ public sealed class ConfigStateMachine : SimpleStateMachine
         if (payload.IsEmpty)
             return null;
 
-        var bytes = payload.ToArray();
-
         // DotNext WAL may prepend null bytes (0x00) as padding under concurrent load.
         // Skip them to find the actual MessagePack payload start.
-        var offset = 0;
-        while (offset < bytes.Length && bytes[offset] == 0x00)
-            offset++;
+        // Use SequenceReader to avoid allocating a byte[] copy on LOH for large entries.
+        var reader = new SequenceReader<byte>(payload);
+        while (!reader.End && reader.TryPeek(out var b) && b == 0x00)
+            reader.Advance(1);
 
-        if (offset >= bytes.Length)
+        if (reader.End)
         {
-            _logger.LogDebug("Skipping null-only entry ({Length} bytes)", bytes.Length);
+            _logger.LogDebug("Skipping null-only entry ({Length} bytes)", payload.Length);
             return null;
         }
 
+        var trimmed = payload.Slice(reader.Position);
+
         try
         {
-            var span = new ReadOnlyMemory<byte>(bytes, offset, bytes.Length - offset);
-            return MessagePackSerializer.Deserialize<ICommand>(span, ConfmanSerializerOptions.Instance);
+            return MessagePackSerializer.Deserialize<ICommand>(trimmed, ConfmanSerializerOptions.Instance);
         }
         catch (MessagePackSerializationException ex)
         {
-            _logger.LogWarning(ex, "MessagePack deserialization failed ({Length} bytes, offset {Offset}, firstByte=0x{FirstByte:X2})",
-                bytes.Length, offset, bytes[offset]);
+            _logger.LogWarning(ex, "MessagePack deserialization failed ({Length} bytes, offset {Offset})",
+                payload.Length, reader.Consumed);
             return null;
         }
     }

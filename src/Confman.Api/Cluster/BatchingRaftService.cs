@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Confman.Api.Cluster.Commands;
@@ -28,6 +29,10 @@ public sealed class BatchingRaftService : IRaftService, IAsyncDisposable
     private readonly int _maxBatchSize;
     private readonly int _maxBatchWaitMs;
     private readonly int _maxBatchBytes;
+
+    // Reusable buffer for MessagePack serialization — avoids LOH byte[] allocations.
+    // Safe: only accessed from the single-reader flush loop.
+    private readonly ArrayBufferWriter<byte> _serializeBuffer = new(1024);
 
     public BatchingRaftService(IRaftCluster cluster, ILogger<BatchingRaftService> logger, IConfiguration configuration)
     {
@@ -184,13 +189,16 @@ public sealed class BatchingRaftService : IRaftService, IAsyncDisposable
                 : new BatchCommand { Commands = batch.Select(p => p.Command).ToList() };
 #pragma warning restore IDE0007
 
-            var bytes = MessagePackSerializer.Serialize<ICommand>(command, ConfmanSerializerOptions.Instance, ct);
+            // Serialize into reusable buffer to avoid LOH byte[] allocations.
+            // ArrayBufferWriter grows as needed but reuses its internal array across calls.
+            _serializeBuffer.Clear();
+            MessagePackSerializer.Serialize<ICommand>(_serializeBuffer, command, ConfmanSerializerOptions.Instance, ct);
 
             _logger.LogDebug(
                 "Replicating batch: {Count} commands, {Size} bytes",
-                batch.Count, bytes.Length);
+                batch.Count, _serializeBuffer.WrittenCount);
 
-            var entry = new BinaryLogEntry(bytes, _cluster.Term);
+            var entry = new BinaryLogEntry(_serializeBuffer.WrittenMemory, _cluster.Term);
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
@@ -253,7 +261,7 @@ public sealed class BatchingRaftService : IRaftService, IAsyncDisposable
         private readonly ReadOnlyMemory<byte> _data;
         private readonly long _term;
 
-        public BinaryLogEntry(byte[] data, long term)
+        public BinaryLogEntry(ReadOnlyMemory<byte> data, long term)
         {
             _data = data;
             _term = term;

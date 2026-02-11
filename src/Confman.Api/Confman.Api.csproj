@@ -7,6 +7,14 @@
     <!-- MsgPack014: AuditActionFormatter already handles null; nullable annotation mismatch is cosmetic -->
     <!-- MsgPack017: init+default properties always serialized — default reset on deserialization is safe -->
     <NoWarn>$(NoWarn);MsgPack014;MsgPack017</NoWarn>
+    <!-- DATAS: Dynamic Adaptation To Application Sizes (.NET 9+).
+         Aggressively returns memory to OS when the app is idle.
+         Critical for large-payload workloads where LOH fragments heavily. -->
+    <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
+    <!-- Don't hold empty heap segments for future use — return them to the OS immediately.
+         Server GC defaults to true (retaining segments), which causes RSS to stay high
+         after burst workloads even when the GC has collected the objects. -->
+    <RetainVMGarbageCollection>false</RetainVMGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>
