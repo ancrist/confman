@@ -227,11 +227,13 @@ try
         {
             ns = c.Namespace,
             key = c.Key,
-            value = c.Value,
+            value = c.IsBlobBacked ? $"[blob:{c.BlobId}]" : c.Value,
             type = c.Type,
             version = c.Version,
             updatedAt = c.UpdatedAt,
-            updatedBy = c.UpdatedBy
+            updatedBy = c.UpdatedBy,
+            isBlobBacked = c.IsBlobBacked,
+            blobId = c.BlobId,
         });
 
         return Results.Ok(result);

@@ -47,7 +47,7 @@ public class ConfigController : ControllerBase
         _logger.LogDebug("Listing configs in namespace: {Namespace}", ns);
 
         var entries = await _store.ListAsync(ns, ct);
-        var dtos = entries.Select(ConfigEntryDto.FromModel);
+        var dtos = entries.Select(e => ConfigEntryDto.FromModel(e));
 
         return Ok(dtos);
     }
@@ -237,11 +237,11 @@ public record ConfigEntryDto
     public required DateTimeOffset UpdatedAt { get; init; }
     public required string UpdatedBy { get; init; }
 
-    public static ConfigEntryDto FromModel(ConfigEntry entry) => new()
+    public static ConfigEntryDto FromModel(ConfigEntry entry, string? resolvedValue = null) => new()
     {
         Namespace = entry.Namespace,
         Key = entry.Key,
-        Value = entry.Value,
+        Value = resolvedValue ?? entry.Value ?? "",
         Type = entry.Type,
         Version = entry.Version,
         UpdatedAt = entry.UpdatedAt,

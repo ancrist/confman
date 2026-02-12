@@ -27,16 +27,17 @@ public class ConfigEntry
     /// <summary>
     /// The config value as a string. MessagePack serializes this ([Key(2)]).
     /// Hidden from LiteDB via [BsonIgnore] — LiteDB uses CompressedValue instead.
+    /// Null for blob-backed entries (value stored in external blob store).
     /// </summary>
     [Key(2)]
     [BsonIgnore]
-    public required string Value
+    public string? Value
     {
         get
         {
             if (_value is null && _compressedValue is not null)
                 _value = ValueCompression.Decompress(_compressedValue);
-            return _value!;
+            return _value;
         }
         set
         {
@@ -63,4 +64,15 @@ public class ConfigEntry
             _value = null;
         }
     }
+
+    /// <summary>
+    /// SHA256 hash of the uncompressed value, used as the blob store key.
+    /// Non-null for blob-backed entries; null for inline entries.
+    /// </summary>
+    [Key(7)] public string? BlobId { get; set; }
+
+    /// <summary>
+    /// True when the value is stored in the external blob store rather than inline.
+    /// </summary>
+    [IgnoreMember] public bool IsBlobBacked => BlobId is not null;
 }
