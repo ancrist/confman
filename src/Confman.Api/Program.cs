@@ -65,6 +65,20 @@ try
         .Validate(o => o.InlineThresholdBytes >= 1024,
             "BlobStore:InlineThresholdBytes must be >= 1024");
     builder.Services.AddSingleton<IBlobStore, LocalBlobStore>();
+    builder.Services.AddSingleton<IBlobReplicator, PeerBlobReplicator>();
+    builder.Services.AddHttpClient("BlobReplication", client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(30);
+        client.DefaultRequestVersion = System.Net.HttpVersion.Version20;
+        client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        MaxConnectionsPerServer = 2,
+        EnableMultipleHttp2Connections = true,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+    });
 
     // Register cluster services
     builder.Services.AddSingleton<IClusterMemberLifetime, ClusterLifetime>();
