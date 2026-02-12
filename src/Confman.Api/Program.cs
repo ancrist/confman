@@ -4,6 +4,7 @@ using Confman.Api.Auth;
 using Confman.Api.Cluster;
 using Confman.Api.Middleware;
 using Confman.Api.Storage;
+using Confman.Api.Storage.Blobs;
 using DotNext.Net.Cluster.Consensus.Raft;
 using DotNext.Net.Cluster.Consensus.Raft.Http;
 using Microsoft.AspNetCore.Connections;
@@ -55,6 +56,15 @@ try
 
     // Register storage
     builder.Services.AddSingleton<IConfigStore, LiteDbConfigStore>();
+
+    // Register blob store with options validation
+    builder.Services.AddOptions<BlobStoreOptions>()
+        .Bind(builder.Configuration.GetSection(BlobStoreOptions.SectionName))
+        .Validate(o => !o.Enabled || !string.IsNullOrEmpty(o.ClusterToken),
+            "BlobStore:ClusterToken is required when blob store is enabled")
+        .Validate(o => o.InlineThresholdBytes >= 1024,
+            "BlobStore:InlineThresholdBytes must be >= 1024");
+    builder.Services.AddSingleton<IBlobStore, LocalBlobStore>();
 
     // Register cluster services
     builder.Services.AddSingleton<IClusterMemberLifetime, ClusterLifetime>();
