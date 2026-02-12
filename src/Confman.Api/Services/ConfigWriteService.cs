@@ -38,8 +38,13 @@ public sealed class ConfigWriteService : IConfigWriteService
         string author, CancellationToken ct = default)
     {
         var timestamp = DateTimeOffset.UtcNow;
+        var valueSize = Encoding.UTF8.GetByteCount(value);
         var useBlobPath = _options.Value.Enabled
-            && Encoding.UTF8.GetByteCount(value) >= _options.Value.InlineThresholdBytes;
+            && valueSize >= _options.Value.InlineThresholdBytes;
+
+        _logger.LogDebug(
+            "Write {Namespace}/{Key}: {ValueSize} bytes → {Path} path",
+            ns, key, valueSize, useBlobPath ? "blob" : "inline");
 
         if (useBlobPath)
         {
@@ -66,9 +71,11 @@ public sealed class ConfigWriteService : IConfigWriteService
         var replicated = await _raft.ReplicateAsync(command, ct);
         if (!replicated)
         {
+            _logger.LogWarning("Inline write failed Raft replication for {Namespace}/{Key}", ns, key);
             return new ConfigWriteResult(false, timestamp, "Replication failed");
         }
 
+        _logger.LogDebug("Inline write committed for {Namespace}/{Key}", ns, key);
         return new ConfigWriteResult(true, timestamp);
     }
 
@@ -84,7 +91,7 @@ public sealed class ConfigWriteService : IConfigWriteService
             blobId = await _blobStore.PutFromStreamAsync(valueStream, valueBytes.Length, ct);
         }
 
-        _logger.LogDebug("Blob stored locally: {BlobId} for {Namespace}/{Key}", blobId, ns, key);
+        _logger.LogDebug("Blob stored locally: {BlobId} for {Namespace}/{Key}", blobId[..8], ns, key);
 
         // Step 2: Replicate blob to quorum
         try
@@ -93,7 +100,7 @@ public sealed class ConfigWriteService : IConfigWriteService
         }
         catch (BlobReplicationException ex)
         {
-            _logger.LogWarning(ex, "Blob quorum failed for {BlobId} ({Namespace}/{Key})", blobId, ns, key);
+            _logger.LogWarning(ex, "Blob quorum failed for {BlobId} ({Namespace}/{Key})", blobId[..8], ns, key);
             return new ConfigWriteResult(false, timestamp, $"Blob replication failed: {ex.Message}");
         }
 
@@ -115,11 +122,11 @@ public sealed class ConfigWriteService : IConfigWriteService
             // Harmless (content-addressed, immutable) but wastes disk. Future GC can clean up.
             _logger.LogWarning(
                 "Raft commit failed after blob quorum for {BlobId} ({Namespace}/{Key}). Ghost blob created",
-                blobId, ns, key);
+                blobId[..8], ns, key);
             return new ConfigWriteResult(false, timestamp, "Raft replication failed after blob quorum");
         }
 
-        _logger.LogDebug("Blob-backed write committed: {BlobId} for {Namespace}/{Key}", blobId, ns, key);
+        _logger.LogDebug("Blob-backed write committed: {BlobId} for {Namespace}/{Key}", blobId[..8], ns, key);
         return new ConfigWriteResult(true, timestamp);
     }
 }

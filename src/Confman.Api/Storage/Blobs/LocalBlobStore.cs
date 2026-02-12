@@ -34,7 +34,9 @@ public sealed partial class LocalBlobStore : IBlobStore
     public Task<bool> ExistsAsync(string blobId, CancellationToken ct = default)
     {
         ValidateBlobId(blobId);
-        return Task.FromResult(File.Exists(BlobPath(blobId)));
+        var exists = File.Exists(BlobPath(blobId));
+        _logger.LogDebug("Blob exists check {BlobId}: {Exists}", blobId[..8], exists);
+        return Task.FromResult(exists);
     }
 
     public async Task<string> PutFromStreamAsync(Stream source, long contentLength, CancellationToken ct = default)
@@ -45,7 +47,8 @@ public sealed partial class LocalBlobStore : IBlobStore
 
         try
         {
-            await using (var fs = CreateWriteStream(tempPath, contentLength))
+            // Don't preallocate: compressed size is unpredictable (could be 100× smaller)
+            await using (var fs = CreateWriteStream(tempPath, estimatedSize: 0))
             {
                 blobId = await BlobCompression.HashAndCompressAsync(source, fs, ct);
                 // fsync the file data to disk
@@ -65,10 +68,10 @@ public sealed partial class LocalBlobStore : IBlobStore
             {
                 // Same content already stored by concurrent write — delete our temp file
                 File.Delete(tempPath);
-                _logger.LogDebug("Blob {BlobId} already exists (concurrent write)", blobId);
+                _logger.LogDebug("Blob {BlobId} already exists (concurrent write)", blobId[..8]);
             }
 
-            _logger.LogDebug("Stored blob {BlobId} ({Bytes} bytes compressed)", blobId, new FileInfo(finalPath).Length);
+            _logger.LogDebug("Stored blob {BlobId} ({Bytes} bytes compressed)", blobId[..8], new FileInfo(finalPath).Length);
             return blobId;
         }
         catch
@@ -87,7 +90,7 @@ public sealed partial class LocalBlobStore : IBlobStore
         var finalPath = BlobPath(blobId);
         if (File.Exists(finalPath))
         {
-            _logger.LogDebug("Blob {BlobId} already exists, skipping put", blobId);
+            _logger.LogDebug("Blob {BlobId} already exists, skipping put", blobId[..8]);
             return;
         }
 
@@ -121,10 +124,10 @@ public sealed partial class LocalBlobStore : IBlobStore
             catch (IOException) when (File.Exists(finalPath))
             {
                 File.Delete(tempPath);
-                _logger.LogDebug("Blob {BlobId} already exists (concurrent write)", blobId);
+                _logger.LogDebug("Blob {BlobId} already exists (concurrent write)", blobId[..8]);
             }
 
-            _logger.LogDebug("Stored compressed blob {BlobId}", blobId);
+            _logger.LogDebug("Stored compressed blob {BlobId}", blobId[..8]);
         }
         catch
         {
@@ -139,7 +142,10 @@ public sealed partial class LocalBlobStore : IBlobStore
 
         var path = BlobPath(blobId);
         if (!File.Exists(path))
+        {
+            _logger.LogDebug("Blob {BlobId} not found locally", blobId[..8]);
             return Task.FromResult<Stream?>(null);
+        }
 
         var stream = new FileStream(path, new FileStreamOptions
         {
@@ -150,12 +156,14 @@ public sealed partial class LocalBlobStore : IBlobStore
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
         });
 
+        _logger.LogDebug("Opened blob {BlobId} for read ({Bytes} bytes)", blobId[..8], stream.Length);
         return Task.FromResult<Stream?>(stream);
     }
 
     public Task DeleteAsync(string blobId, CancellationToken ct = default)
     {
         ValidateBlobId(blobId);
+        _logger.LogDebug("Deleting blob {BlobId}", blobId[..8]);
         TryDeleteFile(BlobPath(blobId));
         return Task.CompletedTask;
     }

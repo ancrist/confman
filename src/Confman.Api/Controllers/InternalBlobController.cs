@@ -44,6 +44,7 @@ public partial class InternalBlobController : ControllerBase
     {
         if (!BlobIdPattern().IsMatch(blobId))
         {
+            _logger.LogWarning("Rejected blob PUT with invalid ID: {BlobId}", blobId);
             return BadRequest($"Invalid blob ID: must be 64 lowercase hex characters");
         }
 
@@ -51,6 +52,8 @@ public partial class InternalBlobController : ControllerBase
         var maxSize = _options.Value.MaxBlobSizeBytes;
         if (Request.ContentLength > maxSize)
         {
+            _logger.LogWarning("Rejected blob {BlobId}: Content-Length {ContentLength} exceeds max {MaxSize}",
+                blobId[..8], Request.ContentLength, maxSize);
             return StatusCode(StatusCodes.Status413PayloadTooLarge,
                 $"Blob exceeds maximum size of {maxSize} bytes");
         }
@@ -58,7 +61,7 @@ public partial class InternalBlobController : ControllerBase
         // Idempotent: if blob already exists, return 204
         if (await _blobStore.ExistsAsync(blobId, ct))
         {
-            _logger.LogDebug("Blob {BlobId} already exists, skipping", blobId);
+            _logger.LogDebug("Blob {BlobId} already exists, skipping", blobId[..8]);
             return NoContent();
         }
 
@@ -67,17 +70,17 @@ public partial class InternalBlobController : ControllerBase
             // Wrap body in size-limiting stream to prevent disk exhaustion even without Content-Length
             var limitedBody = new SizeLimitingStream(Request.Body, maxSize);
             await _blobStore.PutCompressedAsync(blobId, limitedBody, Request.ContentLength ?? 0, ct);
-            _logger.LogDebug("Received blob {BlobId} from leader", blobId);
+            _logger.LogDebug("Received blob {BlobId} from leader", blobId[..8]);
             return Ok();
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("hash validation failed"))
         {
-            _logger.LogWarning("Blob {BlobId} hash validation failed", blobId);
+            _logger.LogWarning("Blob {BlobId} hash validation failed", blobId[..8]);
             return BadRequest("Blob hash validation failed");
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("exceeds maximum"))
         {
-            _logger.LogWarning("Blob {BlobId} exceeds size limit", blobId);
+            _logger.LogWarning("Blob {BlobId} exceeds size limit", blobId[..8]);
             return StatusCode(StatusCodes.Status413PayloadTooLarge, "Blob exceeds maximum allowed size");
         }
     }
@@ -92,15 +95,18 @@ public partial class InternalBlobController : ControllerBase
     {
         if (!BlobIdPattern().IsMatch(blobId))
         {
+            _logger.LogWarning("Rejected blob GET with invalid ID: {BlobId}", blobId);
             return BadRequest($"Invalid blob ID: must be 64 lowercase hex characters");
         }
 
         var stream = await _blobStore.OpenReadAsync(blobId, ct);
         if (stream is null)
         {
+            _logger.LogDebug("Blob {BlobId} not found for GET request", blobId[..8]);
             return NotFound();
         }
 
+        _logger.LogDebug("Serving blob {BlobId} ({Bytes} bytes)", blobId[..8], stream.Length);
         return File(stream, "application/octet-stream");
     }
 

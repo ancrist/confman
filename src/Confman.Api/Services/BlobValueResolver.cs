@@ -47,13 +47,17 @@ public sealed class BlobValueResolver : IBlobValueResolver
         }
 
         var blobId = entry.BlobId!;
+        _logger.LogDebug("Resolving blob-backed value {BlobId} for {Namespace}/{Key}", blobId[..8], entry.Namespace, entry.Key);
 
         // Fast path: blob exists locally
         var value = await TryReadLocalAsync(blobId, ct);
         if (value is not null)
         {
+            _logger.LogDebug("Blob {BlobId} resolved from local store", blobId[..8]);
             return value;
         }
+
+        _logger.LogDebug("Blob {BlobId} not local, fetching from peers", blobId[..8]);
 
         // Slow path: fetch from peer with deduplication gate
         var gate = _fetchGates.GetOrAdd(blobId, _ => new SemaphoreSlim(1, 1));
@@ -64,6 +68,7 @@ public sealed class BlobValueResolver : IBlobValueResolver
             value = await TryReadLocalAsync(blobId, ct);
             if (value is not null)
             {
+                _logger.LogDebug("Blob {BlobId} resolved from local store (fetched by another thread)", blobId[..8]);
                 return value;
             }
 
@@ -97,12 +102,13 @@ public sealed class BlobValueResolver : IBlobValueResolver
         var peerUris = GetPeerUris();
         if (peerUris.Count == 0)
         {
-            _logger.LogWarning("Blob {BlobId} missing locally and no peers available", blobId);
+            _logger.LogWarning("Blob {BlobId} missing locally and no peers available", blobId[..8]);
             return null;
         }
 
         foreach (var peerUri in peerUris)
         {
+            _logger.LogDebug("Trying to fetch blob {BlobId} from peer {Peer}", blobId[..8], peerUri);
             try
             {
                 var client = _httpClientFactory.CreateClient("BlobReplication");
@@ -115,7 +121,7 @@ public sealed class BlobValueResolver : IBlobValueResolver
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.LogDebug("Peer {Peer} returned {Status} for blob {BlobId}",
-                        peerUri, response.StatusCode, blobId);
+                        peerUri, response.StatusCode, blobId[..8]);
                     continue;
                 }
 
@@ -124,18 +130,18 @@ public sealed class BlobValueResolver : IBlobValueResolver
                 var contentLength = response.Content.Headers.ContentLength ?? 0;
                 await _blobStore.PutCompressedAsync(blobId, peerStream, contentLength, ct);
 
-                _logger.LogDebug("Fetched and cached blob {BlobId} from {Peer}", blobId, peerUri);
+                _logger.LogDebug("Fetched and cached blob {BlobId} from {Peer}", blobId[..8], peerUri);
 
                 // Read back the cached value
                 return await TryReadLocalAsync(blobId, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogDebug(ex, "Failed to fetch blob {BlobId} from {Peer}", blobId, peerUri);
+                _logger.LogDebug(ex, "Failed to fetch blob {BlobId} from {Peer}", blobId[..8], peerUri);
             }
         }
 
-        _logger.LogWarning("Blob {BlobId} unavailable from all {PeerCount} peers", blobId, peerUris.Count);
+        _logger.LogWarning("Blob {BlobId} unavailable from all {PeerCount} peers", blobId[..8], peerUris.Count);
         return null;
     }
 
