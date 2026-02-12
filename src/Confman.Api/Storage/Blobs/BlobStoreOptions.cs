@@ -18,6 +18,9 @@ public sealed class BlobStoreOptions
     /// <summary>Shared secret for inter-node blob replication endpoints.</summary>
     public string ClusterToken { get; set; } = string.Empty;
 
-    /// <summary>Maximum allowed blob size in bytes. Default: 50MB.</summary>
+    /// <summary>Maximum allowed blob size in bytes (compressed on disk). Default: 50MB.</summary>
     public int MaxBlobSizeBytes { get; set; } = 50 * 1024 * 1024;
+
+    /// <summary>Maximum allowed decompressed size in bytes. Prevents LZ4 decompression bombs. Default: 200MB.</summary>
+    public long MaxDecompressedSizeBytes { get; set; } = 200 * 1024 * 1024L;
 }

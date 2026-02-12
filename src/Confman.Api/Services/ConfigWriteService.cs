@@ -66,11 +66,10 @@ public sealed class ConfigWriteService : IConfigWriteService
         var replicated = await _raft.ReplicateAsync(command, ct);
         if (!replicated)
         {
-            return new ConfigWriteResult(false, ns, key, value, type, timestamp, author,
-                "Replication failed");
+            return new ConfigWriteResult(false, timestamp, "Replication failed");
         }
 
-        return new ConfigWriteResult(true, ns, key, value, type, timestamp, author);
+        return new ConfigWriteResult(true, timestamp);
     }
 
     private async Task<ConfigWriteResult> WriteBlobPathAsync(
@@ -95,8 +94,7 @@ public sealed class ConfigWriteService : IConfigWriteService
         catch (BlobReplicationException ex)
         {
             _logger.LogWarning(ex, "Blob quorum failed for {BlobId} ({Namespace}/{Key})", blobId, ns, key);
-            return new ConfigWriteResult(false, ns, key, value, type, timestamp, author,
-                $"Blob replication failed: {ex.Message}");
+            return new ConfigWriteResult(false, timestamp, $"Blob replication failed: {ex.Message}");
         }
 
         // Step 3: Raft commit the pointer
@@ -118,11 +116,10 @@ public sealed class ConfigWriteService : IConfigWriteService
             _logger.LogWarning(
                 "Raft commit failed after blob quorum for {BlobId} ({Namespace}/{Key}). Ghost blob created",
                 blobId, ns, key);
-            return new ConfigWriteResult(false, ns, key, value, type, timestamp, author,
-                "Raft replication failed after blob quorum");
+            return new ConfigWriteResult(false, timestamp, "Raft replication failed after blob quorum");
         }
 
         _logger.LogDebug("Blob-backed write committed: {BlobId} for {Namespace}/{Key}", blobId, ns, key);
-        return new ConfigWriteResult(true, ns, key, value, type, timestamp, author);
+        return new ConfigWriteResult(true, timestamp);
     }
 }

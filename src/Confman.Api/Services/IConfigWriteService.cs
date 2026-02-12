@@ -17,13 +17,10 @@ public interface IConfigWriteService
 
 /// <summary>
 /// Result of a config write operation.
+/// Only carries data the caller doesn't already have (Success, Timestamp, ErrorDetail).
+/// The caller supplies Namespace, Key, Value, Type, and Author — no need to echo them back.
 /// </summary>
 public sealed record ConfigWriteResult(
     bool Success,
-    string Namespace,
-    string Key,
-    string Value,
-    string Type,
     DateTimeOffset Timestamp,
-    string Author,
     string? ErrorDetail = null);

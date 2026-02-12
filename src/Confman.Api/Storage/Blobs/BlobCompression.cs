@@ -48,18 +48,27 @@ public static class BlobCompression
 
     /// <summary>
     /// Decompresses an LZ4 stream to destination. Streaming, no full materialization.
+    /// Enforces maxDecompressedBytes to prevent decompression bombs.
     /// </summary>
     public static async Task DecompressAsync(
-        Stream source, Stream destination, CancellationToken ct = default)
+        Stream source, Stream destination, long maxDecompressedBytes = 0, CancellationToken ct = default)
     {
         var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
         try
         {
             await using var lz4 = LZ4Stream.Decode(source, leaveOpen: true);
+            long totalWritten = 0;
 
             int bytesRead;
             while ((bytesRead = await lz4.ReadAsync(buffer.AsMemory(0, BufferSize), ct)) > 0)
             {
+                totalWritten += bytesRead;
+                if (maxDecompressedBytes > 0 && totalWritten > maxDecompressedBytes)
+                {
+                    throw new InvalidOperationException(
+                        $"Decompressed size exceeds limit of {maxDecompressedBytes} bytes (decompression bomb protection)");
+                }
+
                 await destination.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
             }
         }
@@ -74,10 +83,10 @@ public static class BlobCompression
     /// This is unavoidable for the read path — the API returns JSON with the value inline.
     /// </summary>
     public static async Task<string> DecompressToStringAsync(
-        Stream compressedSource, CancellationToken ct = default)
+        Stream compressedSource, long maxDecompressedBytes = 0, CancellationToken ct = default)
     {
         using var ms = new MemoryStream();
-        await DecompressAsync(compressedSource, ms, ct);
+        await DecompressAsync(compressedSource, ms, maxDecompressedBytes, ct);
         ms.Position = 0;
         using var reader = new StreamReader(ms);
         return await reader.ReadToEndAsync(ct);
@@ -85,19 +94,28 @@ public static class BlobCompression
 
     /// <summary>
     /// Validates that SHA256 of decompressed content matches the expected blobId.
+    /// Enforces maxDecompressedBytes to prevent decompression bombs during validation.
     /// </summary>
     public static async Task<bool> ValidateAsync(
-        string expectedBlobId, Stream compressedSource, CancellationToken ct = default)
+        string expectedBlobId, Stream compressedSource, long maxDecompressedBytes = 0, CancellationToken ct = default)
     {
         var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
         try
         {
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             await using var lz4 = LZ4Stream.Decode(compressedSource, leaveOpen: true);
+            long totalRead = 0;
 
             int bytesRead;
             while ((bytesRead = await lz4.ReadAsync(buffer.AsMemory(0, BufferSize), ct)) > 0)
             {
+                totalRead += bytesRead;
+                if (maxDecompressedBytes > 0 && totalRead > maxDecompressedBytes)
+                {
+                    throw new InvalidOperationException(
+                        $"Decompressed size exceeds limit of {maxDecompressedBytes} bytes (decompression bomb protection)");
+                }
+
                 hash.AppendData(buffer.AsSpan(0, bytesRead));
             }
 

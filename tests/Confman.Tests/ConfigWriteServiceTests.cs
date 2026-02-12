@@ -87,7 +87,7 @@ public class ConfigWriteServiceTests
         var result = await service.WriteAsync("ns", "key", largeValue, "string", "author");
 
         Assert.False(result.Success);
-        Assert.Contains("quorum", result.ErrorDetail);
+        Assert.Contains("quorum", result.ErrorDetail!);
         // Should NOT commit to Raft after blob failure
         await _raft.DidNotReceive().ReplicateAsync(
             Arg.Any<ICommand>(), Arg.Any<CancellationToken>());
@@ -105,7 +105,7 @@ public class ConfigWriteServiceTests
         var result = await service.WriteAsync("ns", "key", largeValue, "string", "author");
 
         Assert.False(result.Success);
-        Assert.Contains("Raft", result.ErrorDetail);
+        Assert.Contains("Raft", result.ErrorDetail!);
     }
 
     [Fact]

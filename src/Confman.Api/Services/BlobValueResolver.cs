@@ -74,7 +74,10 @@ public sealed class BlobValueResolver : IBlobValueResolver
         finally
         {
             gate.Release();
-            _fetchGates.TryRemove(blobId, out _);
+            // Do NOT remove the gate: other threads may be queued on this semaphore.
+            // Removing it would let a new GetOrAdd create a second SemaphoreSlim for the same
+            // blobId, breaking the deduplication guarantee. SemaphoreSlim(1,1) is lightweight;
+            // one per unique missing blobId is acceptable for a config service.
         }
     }
 
@@ -86,7 +89,7 @@ public sealed class BlobValueResolver : IBlobValueResolver
             return null;
         }
 
-        return await BlobCompression.DecompressToStringAsync(stream, ct);
+        return await BlobCompression.DecompressToStringAsync(stream, _options.Value.MaxDecompressedSizeBytes, ct);
     }
 
     private async Task<string?> FetchFromPeerAsync(string blobId, CancellationToken ct)

@@ -55,11 +55,14 @@ public class ClusterTokenAuthenticationHandler : AuthenticationHandler<ClusterTo
             return Task.FromResult(AuthenticateResult.Fail("Cluster token not configured"));
         }
 
-        // Constant-time comparison to prevent timing side-channel attacks
-        var expectedBytes = Encoding.UTF8.GetBytes(expectedToken);
-        var providedBytes = Encoding.UTF8.GetBytes(providedToken);
+        // Hash both tokens before comparison to normalize length.
+        // CryptographicOperations.FixedTimeEquals returns early on length mismatch,
+        // which would leak the token length via timing side-channel. Hashing both
+        // to SHA256 (always 32 bytes) eliminates this oracle.
+        var expectedHash = SHA256.HashData(Encoding.UTF8.GetBytes(expectedToken));
+        var providedHash = SHA256.HashData(Encoding.UTF8.GetBytes(providedToken));
 
-        if (!CryptographicOperations.FixedTimeEquals(expectedBytes, providedBytes))
+        if (!CryptographicOperations.FixedTimeEquals(expectedHash, providedHash))
         {
             Logger.LogWarning("Invalid cluster token from {RemoteIp}",
                 Context.Connection.RemoteIpAddress);

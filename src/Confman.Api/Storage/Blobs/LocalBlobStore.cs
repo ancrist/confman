@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Options;
 
 namespace Confman.Api.Storage.Blobs;
 
@@ -12,14 +13,16 @@ namespace Confman.Api.Storage.Blobs;
 public sealed partial class LocalBlobStore : IBlobStore
 {
     private readonly string _blobsRoot;
+    private readonly long _maxDecompressedBytes;
     private readonly ILogger<LocalBlobStore> _logger;
 
     [GeneratedRegex("^[0-9a-f]{64}$")]
     private static partial Regex BlobIdPattern();
 
-    public LocalBlobStore(IConfiguration configuration, ILogger<LocalBlobStore> logger)
+    public LocalBlobStore(IConfiguration configuration, IOptions<BlobStoreOptions> options, ILogger<LocalBlobStore> logger)
     {
         _logger = logger;
+        _maxDecompressedBytes = options.Value.MaxDecompressedSizeBytes;
         var dataPath = configuration["Storage:DataPath"] ?? "./data";
         _blobsRoot = Path.Combine(dataPath, "blobs");
         Directory.CreateDirectory(_blobsRoot);
@@ -101,7 +104,7 @@ public sealed partial class LocalBlobStore : IBlobStore
             // Validate hash by decompressing and computing SHA256
             await using (var readStream = File.OpenRead(tempPath))
             {
-                var valid = await BlobCompression.ValidateAsync(blobId, readStream, ct);
+                var valid = await BlobCompression.ValidateAsync(blobId, readStream, _maxDecompressedBytes, ct);
                 if (!valid)
                 {
                     throw new InvalidOperationException(

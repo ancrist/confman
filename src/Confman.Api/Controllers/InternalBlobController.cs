@@ -47,11 +47,12 @@ public partial class InternalBlobController : ControllerBase
             return BadRequest($"Invalid blob ID: must be 64 lowercase hex characters");
         }
 
-        // Check max blob size
-        if (Request.ContentLength > _options.Value.MaxBlobSizeBytes)
+        // Check max blob size (Content-Length is optional/spoofable — also enforce via stream limit below)
+        var maxSize = _options.Value.MaxBlobSizeBytes;
+        if (Request.ContentLength > maxSize)
         {
             return StatusCode(StatusCodes.Status413PayloadTooLarge,
-                $"Blob exceeds maximum size of {_options.Value.MaxBlobSizeBytes} bytes");
+                $"Blob exceeds maximum size of {maxSize} bytes");
         }
 
         // Idempotent: if blob already exists, return 204
@@ -63,7 +64,9 @@ public partial class InternalBlobController : ControllerBase
 
         try
         {
-            await _blobStore.PutCompressedAsync(blobId, Request.Body, Request.ContentLength ?? 0, ct);
+            // Wrap body in size-limiting stream to prevent disk exhaustion even without Content-Length
+            var limitedBody = new SizeLimitingStream(Request.Body, maxSize);
+            await _blobStore.PutCompressedAsync(blobId, limitedBody, Request.ContentLength ?? 0, ct);
             _logger.LogDebug("Received blob {BlobId} from leader", blobId);
             return Ok();
         }
@@ -71,6 +74,11 @@ public partial class InternalBlobController : ControllerBase
         {
             _logger.LogWarning("Blob {BlobId} hash validation failed", blobId);
             return BadRequest("Blob hash validation failed");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("exceeds maximum"))
+        {
+            _logger.LogWarning("Blob {BlobId} exceeds size limit", blobId);
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, "Blob exceeds maximum allowed size");
         }
     }
 
@@ -94,5 +102,44 @@ public partial class InternalBlobController : ControllerBase
         }
 
         return File(stream, "application/octet-stream");
+    }
+
+    /// <summary>
+    /// Read-only stream wrapper that throws after maxBytes have been read.
+    /// Prevents disk exhaustion from missing or spoofed Content-Length headers.
+    /// </summary>
+    private sealed class SizeLimitingStream(Stream inner, long maxBytes) : Stream
+    {
+        private long _totalRead;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct)
+        {
+            var read = await inner.ReadAsync(buffer.AsMemory(offset, count), ct);
+            _totalRead += read;
+            if (_totalRead > maxBytes)
+                throw new InvalidOperationException($"Stream exceeds maximum allowed size of {maxBytes} bytes");
+            return read;
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+        {
+            var read = await inner.ReadAsync(buffer, ct);
+            _totalRead += read;
+            if (_totalRead > maxBytes)
+                throw new InvalidOperationException($"Stream exceeds maximum allowed size of {maxBytes} bytes");
+            return read;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException("Use ReadAsync");
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }

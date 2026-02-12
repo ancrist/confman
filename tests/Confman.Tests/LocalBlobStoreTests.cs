@@ -2,6 +2,7 @@ using System.Text;
 using Confman.Api.Storage.Blobs;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Confman.Tests;
 
@@ -27,7 +28,8 @@ public class LocalBlobStoreTests : IDisposable
             })
             .Build();
 
-        _store = new LocalBlobStore(config, NullLogger<LocalBlobStore>.Instance);
+        var options = Options.Create(new BlobStoreOptions());
+        _store = new LocalBlobStore(config, options, NullLogger<LocalBlobStore>.Instance);
     }
 
     public void Dispose()
@@ -308,7 +310,7 @@ public class LocalBlobStoreTests : IDisposable
             })
             .Build();
 
-        _ = new LocalBlobStore(config, NullLogger<LocalBlobStore>.Instance);
+        _ = new LocalBlobStore(config, Options.Create(new BlobStoreOptions()), NullLogger<LocalBlobStore>.Instance);
 
         Assert.Empty(Directory.EnumerateFiles(blobsDir, ".tmp-*"));
     }

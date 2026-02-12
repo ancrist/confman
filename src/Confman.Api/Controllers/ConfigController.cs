@@ -122,7 +122,8 @@ public class ConfigController : ControllerBase
             _logger.LogInformation("Setting config {Namespace}/{Key} by {Author}", ns, key, author);
         }
 
-        var result = await _writeService.WriteAsync(ns, key, request.Value, request.Type ?? "string", author, ct);
+        var type = request.Type ?? "string";
+        var result = await _writeService.WriteAsync(ns, key, request.Value, type, author, ct);
         if (!result.Success)
         {
             _logger.LogWarning("Set config {Namespace}/{Key} failed ({ElapsedMs} ms): {Detail}",
@@ -144,10 +145,10 @@ public class ConfigController : ControllerBase
         {
             Namespace = ns,
             Key = key,
-            Value = result.Value,
-            Type = result.Type,
+            Value = request.Value,
+            Type = type,
             UpdatedAt = result.Timestamp,
-            UpdatedBy = result.Author,
+            UpdatedBy = author,
             Version = 0  // Version assigned by state machine on apply
         });
     }
