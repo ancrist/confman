@@ -3,6 +3,7 @@ using System.Runtime;
 using Confman.Api.Auth;
 using Confman.Api.Cluster;
 using Confman.Api.Middleware;
+using Confman.Api.Services;
 using Confman.Api.Storage;
 using Confman.Api.Storage.Blobs;
 using DotNext.Net.Cluster.Consensus.Raft;
@@ -79,6 +80,10 @@ try
         PooledConnectionLifetime = TimeSpan.FromMinutes(10),
         ConnectTimeout = TimeSpan.FromSeconds(5),
     });
+
+    // Register write/read services for blob path orchestration
+    builder.Services.AddSingleton<IConfigWriteService, ConfigWriteService>();
+    builder.Services.AddSingleton<IBlobValueResolver, BlobValueResolver>();
 
     // Register cluster services
     builder.Services.AddSingleton<IClusterMemberLifetime, ClusterLifetime>();
