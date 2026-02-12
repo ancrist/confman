@@ -136,15 +136,24 @@ public sealed class ConfigStateMachine : SimpleStateMachine
                 return;
             }
 
-            if (snapshot.Version != 2)
+            if (snapshot.Version is not (2 or 3))
             {
                 throw new InvalidOperationException(
-                    $"Unsupported snapshot version: {snapshot.Version}. This node cannot restore from a snapshot " +
-                    "created by a newer version. Please upgrade this node or use a compatible snapshot.");
+                    $"Unsupported snapshot version: {snapshot.Version}. This node supports versions 2 and 3. " +
+                    "Please upgrade this node or use a compatible snapshot.");
             }
 
             var store = _serviceProvider.GetRequiredService<IConfigStore>();
             await store.RestoreFromSnapshotAsync(snapshot, token);
+
+            // Log blob manifest diagnostics for V3 snapshots
+            var blobCount = snapshot.BlobManifest.Count;
+            if (blobCount > 0)
+            {
+                _logger.LogInformation(
+                    "Snapshot restored with {BlobCount} blob-backed entries. Missing blobs will be fetched on first access",
+                    blobCount);
+            }
 
             _logger.LogInformation("Snapshot restored: {ConfigCount} configs, {NamespaceCount} namespaces, {AuditCount} audit events",
                 snapshot.Configs.Count, snapshot.Namespaces.Count, snapshot.AuditEvents.Count);
@@ -189,13 +198,21 @@ public sealed class ConfigStateMachine : SimpleStateMachine
     {
         var store = _serviceProvider.GetRequiredService<IConfigStore>();
 
+        var configs = await store.GetAllConfigsAsync(token);
+        var blobManifest = configs
+            .Where(c => c.IsBlobBacked)
+            .Select(c => c.BlobId!)
+            .Distinct()
+            .ToList();
+
         var snapshot = new SnapshotData
         {
-            Version = 2,
-            Configs = await store.GetAllConfigsAsync(token),
+            Version = 3,
+            Configs = configs,
             Namespaces = [.. await store.ListNamespacesAsync(token)],
             AuditEvents = await store.GetAllAuditEventsAsync(token),
-            Timestamp = DateTimeOffset.UtcNow
+            Timestamp = DateTimeOffset.UtcNow,
+            BlobManifest = blobManifest,
         };
 
         // Serialize to a temp file, then stream to the writer.
