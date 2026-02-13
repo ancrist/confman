@@ -14,11 +14,13 @@ namespace Confman.Api.Cluster.Commands;
 [JsonDerivedType(typeof(SetNamespaceCommand), "set_namespace")]
 [JsonDerivedType(typeof(DeleteNamespaceCommand), "delete_namespace")]
 [JsonDerivedType(typeof(BatchCommand), "batch")]
+[JsonDerivedType(typeof(SetConfigBlobRefCommand), "set_config_blob_ref")]
 [Union(0, typeof(SetConfigCommand))]
 [Union(1, typeof(DeleteConfigCommand))]
 [Union(2, typeof(SetNamespaceCommand))]
 [Union(3, typeof(DeleteNamespaceCommand))]
 [Union(4, typeof(BatchCommand))]
+[Union(5, typeof(SetConfigBlobRefCommand))]
 public interface ICommand
 {
     /// <summary>

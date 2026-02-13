@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Confman.Api.Cluster;
 using Confman.Api.Cluster.Commands;
 using Confman.Api.Models;
+using Confman.Api.Services;
 using Confman.Api.Storage;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,17 +20,23 @@ public class ConfigController : ControllerBase
 {
     private readonly IConfigStore _store;
     private readonly IRaftService _raft;
+    private readonly IConfigWriteService _writeService;
+    private readonly IBlobValueResolver _blobResolver;
     private readonly ILogger<ConfigController> _logger;
     private readonly bool _logConfigChanges;
 
     public ConfigController(
         IConfigStore store,
         IRaftService raft,
+        IConfigWriteService writeService,
+        IBlobValueResolver blobResolver,
         ILogger<ConfigController> logger,
         IConfiguration configuration)
     {
         _store = store;
         _raft = raft;
+        _writeService = writeService;
+        _blobResolver = blobResolver;
         _logger = logger;
         _logConfigChanges = configuration.GetValue<bool>("Api:LogConfigChanges", false);
     }
@@ -47,7 +54,7 @@ public class ConfigController : ControllerBase
         _logger.LogDebug("Listing configs in namespace: {Namespace}", ns);
 
         var entries = await _store.ListAsync(ns, ct);
-        var dtos = entries.Select(ConfigEntryDto.FromModel);
+        var dtos = entries.Select(e => ConfigEntryDto.FromModel(e));
 
         return Ok(dtos);
     }
@@ -59,6 +66,7 @@ public class ConfigController : ControllerBase
     [Authorize(Policy = "ReadOnly")]
     [ProducesResponseType(typeof(ConfigEntryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Get(
         [FromRoute(Name = "namespace")] string ns,
         string key,
@@ -75,7 +83,16 @@ public class ConfigController : ControllerBase
                 statusCode: StatusCodes.Status404NotFound);
         }
 
-        return Ok(ConfigEntryDto.FromModel(entry));
+        var resolvedValue = await _blobResolver.ResolveAsync(entry, ct);
+        if (resolvedValue is null)
+        {
+            return Problem(
+                title: "Blob temporarily unavailable",
+                detail: $"The value for '{key}' in namespace '{ns}' is stored as a blob that is currently unavailable",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        return Ok(ConfigEntryDto.FromModel(entry, resolvedValue));
     }
 
     /// <summary>
@@ -105,22 +122,15 @@ public class ConfigController : ControllerBase
             _logger.LogInformation("Setting config {Namespace}/{Key} by {Author}", ns, key, author);
         }
 
-        var command = new SetConfigCommand
+        var type = request.Type ?? "string";
+        var result = await _writeService.WriteAsync(ns, key, request.Value, type, author, ct);
+        if (!result.Success)
         {
-            Namespace = ns,
-            Key = key,
-            Value = request.Value,
-            Type = request.Type ?? "string",
-            Author = author
-        };
-
-        var replicated = await _raft.ReplicateAsync(command, ct);
-        if (!replicated)
-        {
-            _logger.LogWarning("Set config {Namespace}/{Key} failed replication ({ElapsedMs} ms)", ns, key, sw.ElapsedMilliseconds);
+            _logger.LogWarning("Set config {Namespace}/{Key} failed ({ElapsedMs} ms): {Detail}",
+                ns, key, sw.ElapsedMilliseconds, result.ErrorDetail);
             return Problem(
                 title: "Replication failed",
-                detail: "The configuration change could not be replicated to the cluster",
+                detail: result.ErrorDetail ?? "The configuration change could not be replicated to the cluster",
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
@@ -136,8 +146,8 @@ public class ConfigController : ControllerBase
             Namespace = ns,
             Key = key,
             Value = request.Value,
-            Type = request.Type ?? "string",
-            UpdatedAt = command.Timestamp,
+            Type = type,
+            UpdatedAt = result.Timestamp,
             UpdatedBy = author,
             Version = 0  // Version assigned by state machine on apply
         });
@@ -237,11 +247,11 @@ public record ConfigEntryDto
     public required DateTimeOffset UpdatedAt { get; init; }
     public required string UpdatedBy { get; init; }
 
-    public static ConfigEntryDto FromModel(ConfigEntry entry) => new()
+    public static ConfigEntryDto FromModel(ConfigEntry entry, string? resolvedValue = null) => new()
     {
         Namespace = entry.Namespace,
         Key = entry.Key,
-        Value = entry.Value,
+        Value = resolvedValue ?? entry.Value ?? "",
         Type = entry.Type,
         Version = entry.Version,
         UpdatedAt = entry.UpdatedAt,

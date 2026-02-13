@@ -1,8 +1,11 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime;
 using Confman.Api.Auth;
 using Confman.Api.Cluster;
 using Confman.Api.Middleware;
+using Confman.Api.Services;
 using Confman.Api.Storage;
+using Confman.Api.Storage.Blobs;
 using DotNext.Net.Cluster.Consensus.Raft;
 using DotNext.Net.Cluster.Consensus.Raft.Http;
 using Microsoft.AspNetCore.Connections;
@@ -55,6 +58,33 @@ try
     // Register storage
     builder.Services.AddSingleton<IConfigStore, LiteDbConfigStore>();
 
+    // Register blob store with options validation
+    builder.Services.AddOptions<BlobStoreOptions>()
+        .Bind(builder.Configuration.GetSection(BlobStoreOptions.SectionName))
+        .Validate(o => !o.Enabled || !string.IsNullOrEmpty(o.ClusterToken),
+            "BlobStore:ClusterToken is required when blob store is enabled")
+        .Validate(o => o.InlineThresholdBytes >= 1024,
+            "BlobStore:InlineThresholdBytes must be >= 1024");
+    builder.Services.AddSingleton<IBlobStore, LocalBlobStore>();
+    builder.Services.AddSingleton<IBlobReplicator, PeerBlobReplicator>();
+    builder.Services.AddHttpClient("BlobReplication", client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(30);
+        client.DefaultRequestVersion = System.Net.HttpVersion.Version20;
+        client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        MaxConnectionsPerServer = 2,
+        EnableMultipleHttp2Connections = true,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+    });
+
+    // Register write/read services for blob path orchestration
+    builder.Services.AddSingleton<IConfigWriteService, ConfigWriteService>();
+    builder.Services.AddSingleton<IBlobValueResolver, BlobValueResolver>();
+
     // Register cluster services
     builder.Services.AddSingleton<IClusterMemberLifetime, ClusterLifetime>();
     builder.Services.AddSingleton<IRaftService, BatchingRaftService>();
@@ -68,8 +98,10 @@ try
     builder.Services.AddSingleton(new DotNext.Net.Cluster.Consensus.Raft.StateMachine.WriteAheadLog.Options
     {
         Location = walPath,
-        // Performance tuning: PrivateMemory gives +30-50% write throughput at cost of more RAM
-        MemoryManagement = DotNext.Net.Cluster.Consensus.Raft.StateMachine.WriteAheadLog.MemoryManagementStrategy.PrivateMemory,
+        // SharedMemory (memory-mapped files): OS manages physical memory via virtual memory paging.
+        // PrivateMemory leaked native memory (NativeMemory.AlignedAlloc) because WAL cleanup
+        // iterates disk files but unflushed PrivateMemory pages are invisible to it.
+        MemoryManagement = DotNext.Net.Cluster.Consensus.Raft.StateMachine.WriteAheadLog.MemoryManagementStrategy.SharedMemory,
         ChunkSize = 8 * 1024 * 1024,  // 8 MB chunks: avoids page overflow with large payloads (e.g. 100KB values)
         // Batch fsync: amortizes disk I/O across concurrent writes (group commit).
         // Default 100ms matches etcd's approach. Set to 0 for per-commit durability.
@@ -200,11 +232,13 @@ try
         {
             ns = c.Namespace,
             key = c.Key,
-            value = c.Value,
+            value = c.IsBlobBacked ? $"[blob:{c.BlobId}]" : c.Value,
             type = c.Type,
             version = c.Version,
             updatedAt = c.UpdatedAt,
-            updatedBy = c.UpdatedBy
+            updatedBy = c.UpdatedBy,
+            isBlobBacked = c.IsBlobBacked,
+            blobId = c.BlobId,
         });
 
         return Results.Ok(result);
@@ -240,6 +274,22 @@ try
 
     // Restore state machine from WAL before starting
     await app.RestoreStateAsync<ConfigStateMachine>(CancellationToken.None);
+
+    // Periodic GC trim for idle periods. Server GC only collects during allocation pressure,
+    // so after burst workloads (e.g. 1000 × 1MB writes), dead LOH objects aren't collected
+    // until the next allocation wave. This timer triggers a blocking Gen 2 collection
+    // every 60 seconds when the managed heap exceeds 500 MB.
+    // Blocking is required because LOH compaction only happens during blocking collections.
+    // The brief pause (~10-50ms on a mostly-dead heap) is well within Raft heartbeat tolerance.
+    using var gcTrimTimer = new Timer(_ =>
+    {
+        var heapBytes = GC.GetTotalMemory(forceFullCollection: false);
+        if (heapBytes > 500_000_000)
+        {
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+        }
+    }, null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
 
     Log.Information("Starting Confman on {Urls}", string.Join(", ", app.Urls));
     await app.RunAsync();
