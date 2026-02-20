@@ -3,7 +3,9 @@ using System.Runtime;
 using Confman.Api.Auth;
 using Confman.Api.Cluster;
 using Confman.Api.Middleware;
+using Confman.Api.Services;
 using Confman.Api.Storage;
+using Confman.Api.Storage.Blobs;
 using DotNext.Net.Cluster.Consensus.Raft;
 using DotNext.Net.Cluster.Consensus.Raft.Http;
 using Microsoft.AspNetCore.Connections;
@@ -55,6 +57,33 @@ try
 
     // Register storage
     builder.Services.AddSingleton<IConfigStore, LiteDbConfigStore>();
+
+    // Register blob store with options validation
+    builder.Services.AddOptions<BlobStoreOptions>()
+        .Bind(builder.Configuration.GetSection(BlobStoreOptions.SectionName))
+        .Validate(o => !o.Enabled || !string.IsNullOrEmpty(o.ClusterToken),
+            "BlobStore:ClusterToken is required when blob store is enabled")
+        .Validate(o => o.InlineThresholdBytes >= 1024,
+            "BlobStore:InlineThresholdBytes must be >= 1024");
+    builder.Services.AddSingleton<IBlobStore, LocalBlobStore>();
+    builder.Services.AddSingleton<IBlobReplicator, PeerBlobReplicator>();
+    builder.Services.AddHttpClient("BlobReplication", client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(30);
+        client.DefaultRequestVersion = System.Net.HttpVersion.Version20;
+        client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        MaxConnectionsPerServer = 2,
+        EnableMultipleHttp2Connections = true,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+    });
+
+    // Register write/read services for blob path orchestration
+    builder.Services.AddSingleton<IConfigWriteService, ConfigWriteService>();
+    builder.Services.AddSingleton<IBlobValueResolver, BlobValueResolver>();
 
     // Register cluster services
     builder.Services.AddSingleton<IClusterMemberLifetime, ClusterLifetime>();
@@ -203,11 +232,13 @@ try
         {
             ns = c.Namespace,
             key = c.Key,
-            value = c.Value,
+            value = c.IsBlobBacked ? $"[blob:{c.BlobId}]" : c.Value,
             type = c.Type,
             version = c.Version,
             updatedAt = c.UpdatedAt,
-            updatedBy = c.UpdatedBy
+            updatedBy = c.UpdatedBy,
+            isBlobBacked = c.IsBlobBacked,
+            blobId = c.BlobId,
         });
 
         return Results.Ok(result);

@@ -275,6 +275,92 @@ public class CommandTests : IDisposable
 
     #endregion
 
+    #region SetConfigBlobRefCommand
+
+    [Fact]
+    public async Task SetConfigBlobRefCommand_CreatesBlobBackedEntry()
+    {
+        var blobId = new string('a', 64);
+        var command = new SetConfigBlobRefCommand
+        {
+            Namespace = "blob-ns",
+            Key = "large-config",
+            BlobId = blobId,
+            Author = "test-author"
+        };
+
+        await command.ApplyAsync(_store);
+
+        var entry = await _store.GetAsync("blob-ns", "large-config");
+        Assert.NotNull(entry);
+        Assert.True(entry.IsBlobBacked);
+        Assert.Equal(blobId, entry.BlobId);
+        Assert.Null(entry.Value);
+    }
+
+    [Fact]
+    public async Task SetConfigBlobRefCommand_UpdatesInlineEntryToBlobBacked()
+    {
+        // Create inline entry
+        await new SetConfigCommand
+        {
+            Namespace = "blob-ns",
+            Key = "config",
+            Value = "inline-value",
+            Author = "author1"
+        }.ApplyAsync(_store);
+
+        // Update to blob-backed
+        var blobId = new string('b', 64);
+        await new SetConfigBlobRefCommand
+        {
+            Namespace = "blob-ns",
+            Key = "config",
+            BlobId = blobId,
+            Author = "author2"
+        }.ApplyAsync(_store);
+
+        var entry = await _store.GetAsync("blob-ns", "config");
+        Assert.NotNull(entry);
+        Assert.True(entry.IsBlobBacked);
+        Assert.Equal(blobId, entry.BlobId);
+        Assert.Null(entry.Value);
+        Assert.Equal(2, entry.Version);
+    }
+
+    [Fact]
+    public void ConfigEntry_IsBlobBacked_TrueWhenBlobIdSet()
+    {
+        var entry = new ConfigEntry
+        {
+            Namespace = "ns",
+            Key = "key",
+            UpdatedBy = "author",
+            BlobId = new string('c', 64),
+        };
+
+        Assert.True(entry.IsBlobBacked);
+        Assert.Null(entry.Value);
+    }
+
+    [Fact]
+    public void ConfigEntry_IsBlobBacked_FalseForInlineEntry()
+    {
+        var entry = new ConfigEntry
+        {
+            Namespace = "ns",
+            Key = "key",
+            Value = "inline",
+            UpdatedBy = "author",
+        };
+
+        Assert.False(entry.IsBlobBacked);
+        Assert.Equal("inline", entry.Value);
+        Assert.Null(entry.BlobId);
+    }
+
+    #endregion
+
     #region JSON Serialization (Command Pattern)
 
     [Fact]
@@ -307,7 +393,8 @@ public class CommandTests : IDisposable
             new SetConfigCommand { Namespace = "n", Key = "k", Value = "v", Author = "a" },
             new DeleteConfigCommand { Namespace = "n", Key = "k", Author = "a" },
             new SetNamespaceCommand { Path = "p", Owner = "o", Author = "a" },
-            new DeleteNamespaceCommand { Path = "p", Author = "a" }
+            new DeleteNamespaceCommand { Path = "p", Author = "a" },
+            new SetConfigBlobRefCommand { Namespace = "n", Key = "k", BlobId = new string('a', 64), Author = "a" }
         };
 
         foreach (var command in commands)
@@ -318,6 +405,26 @@ public class CommandTests : IDisposable
             Assert.NotNull(deserialized);
             Assert.Equal(command.GetType(), deserialized.GetType());
         }
+    }
+
+    [Fact]
+    public void SetConfigBlobRefCommand_SerializesViaJson()
+    {
+        ICommand command = new SetConfigBlobRefCommand
+        {
+            Namespace = "ns",
+            Key = "key",
+            BlobId = new string('f', 64),
+            Author = "author"
+        };
+
+        var json = JsonSerializer.Serialize(command);
+        var deserialized = JsonSerializer.Deserialize<ICommand>(json);
+
+        Assert.IsType<SetConfigBlobRefCommand>(deserialized);
+        var blobCmd = (SetConfigBlobRefCommand)deserialized!;
+        Assert.Equal("ns", blobCmd.Namespace);
+        Assert.Equal(new string('f', 64), blobCmd.BlobId);
     }
 
     #endregion

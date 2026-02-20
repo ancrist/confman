@@ -1,0 +1,363 @@
+================================================================================
+BLOB STORE FEATURE: QUICK REFERENCE GUIDE
+================================================================================
+
+INSTITUTIONAL LEARNINGS APPLIED TO 6-PHASE PLAN
+
+Generated: 2026-02-12
+Source: 5 production solution documents from /docs/solutions/
+
+================================================================================
+PHASE 1: DESIGN & PROTO (Blob Index & PoC)
+================================================================================
+
+BLOCKING DECISION:
+  Cluster bootstrap strategy: STATIC or COLD START?
+  → DECISION: Use STATIC (pre-configured members)
+  
+WHY THIS MATTERS:
+  • After hard cutover wipe (Phase 6), DotNext will find no persistent cluster 
+    members on disk
+  • If you restart with coldStart:false + pre-configured members, leader election 
+    works immediately
+  • If you MIX coldStart:true with pre-configured members, node gets permanent 
+    leaderKnown=false (stays in sync but returns 503 on reads)
+  • CRITICAL: Never change bootstrap strategy after wipe
+
+GOTCHA:
+  coldStart:true + UseInMemoryConfigurationStorage = permanent cluster failure
+  → Node fingerprints diverge, TryGetMember returns null forever
+  → State machine still applies log entries (appears healthy) but no leader found
+
+IMPLEMENTATION:
+  • Phase 1 design doc states: "Bootstrap via static members (appsettings.json)"
+  • Phase 1 design doc states: "Never use --coldStart true after wipe"
+  • Verify all nodes have identical cluster member lists in appsettings.nodeN.json
+
+SOURCE FILE:
+  /docs/solutions/2026-02-01-dotnext-coldstart-leader-tracking-loss.md
+
+================================================================================
+PHASE 2: BLOB POINTER COMMAND & REPLICATION
+================================================================================
+
+IMPLEMENTATION 1: WAL Null Bytes Defensive Parsing
+
+PROBLEM:
+  • DotNext WAL prepends random 0x00 bytes to log entries under concurrent writes
+  • Not an application bug — DotNext internal behavior
+  • Causes ~1% failure rate in high-throughput scenarios
+
+SOLUTION - Add null-byte skipping to BlobPointerCommand deserialization:
+  
+  var jsonStart = 0;
+  while (jsonStart < bytes.Length && bytes[jsonStart] == 0)
+      jsonStart++;
+  if (jsonStart >= bytes.Length || bytes[jsonStart] != '{')
+      return null;  // Skip malformed entries
+
+TESTING:
+  Add unit tests with [Theory] for null-byte counts: 1, 8, 64, 256 bytes
+  
+  [Theory]
+  [InlineData(1)]
+  [InlineData(8)]
+  [InlineData(64)]
+  [InlineData(256)]
+  public void DeserializeCommand_VariableNullByteCounts_AllSucceed(int count)
+  {
+      // Prepend count null bytes to valid JSON payload
+      // Verify deserialization succeeds
+  }
+
+LOGGING:
+  [WRN] Skipped 8 null bytes before JSON in log entry (DotNext WAL padding)
+  This is NORMAL and expected under concurrent writes.
+
+CRITICAL: This fix is a PREREQUISITE for Phase 6 (stress test with high-volume 
+          blob pointer writes will trigger null bytes)
+
+SOURCE FILE:
+  /docs/solutions/dotnext-wal-null-bytes-log-entry-deserialization.md
+
+
+IMPLEMENTATION 2: Verify Kestrel Body Size Limit
+
+CURRENT STATUS: Already set to null in Program.cs
+VERIFY:
+  options.Limits.MaxRequestBodySize = null;
+  
+WHY:
+  Raft's AppendEntries RPC bundles multiple BlobPointerCommand entries into one 
+  HTTP request. With many pointer commands, payload easily exceeds 30MB default.
+
+GOTCHA:
+  Don't tighten this limit thinking it's a security issue. 30MB limit will break 
+  Raft replication of large batch writes.
+
+SOURCE FILE:
+  /docs/solutions/2026-02-08-raft-snapshot-starvation-spurious-elections.md (Insight #5)
+
+================================================================================
+PHASE 3: SNAPSHOT VERSION 3 (METADATA-ONLY) DESIGN
+================================================================================
+
+IMPLEMENTATION 1: Streaming Snapshot Serialization
+
+PROBLEM:
+  SerializeToUtf8Bytes() allocates entire JSON as single byte[] in memory
+  500 × 1MB data = >1.5GB memory needed for snapshot
+  File.ReadAllBytesAsync() on restore has same problem
+  With large clusters, this causes OutOfMemoryException
+
+SOLUTION - Use streaming serialization/deserialization:
+
+  // PersistAsync (snapshot creation)
+  await using var fileStream = File.Create(snapshotPath);
+  await JsonSerializer.SerializeAsync(fileStream, snapshot);  // Stream to disk
+  
+  // RestoreAsync (snapshot restore)
+  await using var fileStream = File.OpenRead(snapshotPath);
+  var snapshot = await JsonSerializer.DeserializeAsync<SnapshotData>(fileStream);
+
+MEMORY IMPACT:
+  Peak memory: 1.5GB → 500MB (3x improvement)
+
+NOTE: This is already implemented in current code but CRITICAL for Snapshot v3
+      because metadata alone (audit history, schema) can accumulate
+
+
+IMPLEMENTATION 2: SnapshotInterval Tuning
+
+CURRENT VALUE: 100 (from Tier 2)
+RECOMMENDED FOR BLOB STORE: 50
+
+RATIONALE:
+  • Snapshots are now metadata-only (fast, <100ms)
+  • Without tuning, WAL grows to 1.3GB before compaction
+  • DotNext performance degrades with WAL chunk count: 22ms → 128ms → 611ms → 2175ms
+  • Metadata-only snapshots cost nothing, so snapshot frequently
+
+CONFIGURATION:
+  "Raft": {
+    "SnapshotInterval": 50
+  }
+
+WHAT THIS MEANS:
+  Every 50 config entries written → snapshot created
+  WAL compacts, preventing bloat
+  Latency stays constant (no degradation from large WAL)
+
+SOURCE FILE:
+  /docs/solutions/2026-02-08-large-payload-performance-insights.md (Insights #4)
+
+
+IMPLEMENTATION 3: Verify Raft Timing Invariant
+
+CRITICAL INVARIANT (not enforced by DotNext):
+  snapshot_time < election_timeout < request_timeout
+
+WHY IT MATTERS:
+  If snapshot_time > election_timeout:
+    → Follower misses heartbeat while snapshotting
+    → Follower assumes leader is dead, starts election
+    → Cluster flaps: "No leader in cluster" → recovery loop
+
+CURRENT CONFIG (Safe for Blob Store):
+  "lowerElectionTimeout": 1000,
+  "upperElectionTimeout": 3000,
+  "requestTimeout": "00:00:10",
+  "Raft": { "SnapshotInterval": 50 }
+
+VERIFICATION:
+  Expected snapshot time for metadata-only: <100ms (even for 10K+ configs)
+  Invariant check: 100ms < 1000ms < 10000ms ✓
+  Headroom: 10x on election, 100x on request (safe)
+
+FAILURE SYMPTOMS (if invariant violated):
+  [WRN] Transition to Candidate state has started with term X
+  [WRN] No leader in cluster
+  [ERR] Cluster member http://... is unavailable
+
+TUNING RULE OF THUMB:
+  snapshot_time ≈ 1ms per config entry
+  If expecting 1000 entries → need election_timeout > 1000ms (current is 1000-3000ms, safe)
+
+SOURCE FILE:
+  /docs/solutions/2026-02-08-raft-snapshot-starvation-spurious-elections.md
+
+================================================================================
+PHASE 4: LAZY BLOB FETCH IMPLEMENTATION
+================================================================================
+
+REQUIREMENT: Stream Blobs Directly (No Buffering)
+
+PROBLEM:
+  Buffering full blobs into byte[] causes Large Object Heap (LOH) fragmentation
+  1000 requests for 1MB blobs = 1000 × 1MB allocations
+  LOH fragments, causes: OOM exceptions, GC pauses, SSD wear from compaction
+
+SOLUTION - Stream directly to HTTP response:
+
+  [HttpGet("/api/internal/blobs/{sha256}")]
+  public async Task GetBlob(string sha256)
+  {
+      var blob = await _blobStore.GetBlobStreamAsync(sha256);
+      if (blob == null)
+          return NotFound();
+
+      Response.ContentType = "application/octet-stream";
+      Response.ContentLength = blob.Length;  // Client sees progress
+      await blob.CopyToAsync(Response.Body);  // Stream directly
+  }
+
+WHAT NOT TO DO:
+  ❌ return File(await blobStore.GetBlobBytesAsync(sha256), ...)
+  ❌ var buffer = new MemoryStream(); await src.CopyToAsync(buffer); return File(buffer.ToArray(), ...)
+  ❌ Any approach that creates intermediate byte[]
+
+TESTING:
+  • Test with blobs >100MB (verify no OOM)
+  • Monitor memory during read (should stay flat, no spike)
+
+SOURCE FILE:
+  /docs/solutions/2026-02-08-large-payload-performance-insights.md (Insights #1, #10)
+
+================================================================================
+PHASE 5: INTERNAL BLOB ENDPOINTS & CLUSTER TOKEN AUTH
+================================================================================
+
+REQUIREMENT: Restrict Internal Endpoints to Cluster Members
+
+SOLUTION - Use IClusterMembership from DI:
+
+  DotNext already provides cluster member list via IClusterMembership
+  No need for custom discovery or token validation
+  
+  public async Task InvokeAsync(HttpContext context, IClusterMembership membership)
+  {
+      if (!context.Request.Path.StartsWithSegments("/api/internal"))
+      {
+          await _next(context);
+          return;
+      }
+      
+      var token = context.Request.Headers["X-Cluster-Token"].ToString();
+      var remoteAddress = context.Connection.RemoteIpAddress?.ToString();
+      
+      // Verify token
+      if (!VerifyClusterToken(token))
+      {
+          context.Response.StatusCode = 401;
+          return;
+      }
+      
+      // Verify remote is a cluster member
+      var isClusterMember = membership.Members.Any(m =>
+          m.Endpoint.ToString().Contains(remoteAddress));
+      
+      if (!isClusterMember)
+      {
+          context.Response.StatusCode = 401;
+          return;
+      }
+      
+      await _next(context);
+  }
+
+GOTCHA:
+  Don't over-engineer token validation. IClusterMembership already has the 
+  member list. Just add a static cluster token from environment variable.
+
+SOURCE FILE:
+  /docs/solutions/2026-01-24-dotnext-raft-cluster-members-configuration.md
+
+================================================================================
+PHASE 6: HARD CUTOVER MIGRATION & POST-WIPE STARTUP
+================================================================================
+
+PRE-MIGRATION CHECKLIST:
+  ☐ Phase 1: Bootstrap strategy documented (static)
+  ☐ Phase 2: Null-byte skipping implemented + tested
+  ☐ Phase 3: Streaming snapshots, SnapshotInterval=50 configured
+  ☐ Phase 4: Blob streaming implemented (no byte[] buffering)
+  ☐ Phase 5: Internal endpoint auth working
+  ☐ Backup current data: cp -r data-* /backup/
+
+
+MIGRATION RUNBOOK (copy-paste):
+
+  # 1. Stop all nodes
+  pkill -f "dotnet run --project src/Confman.Api"
+  sleep 2
+
+  # 2. Wipe persistent state
+  rm -rf data-6100/ data-6200/ data-6300/
+
+  # 3. Start all 3 nodes simultaneously
+  CONFMAN_NODE_ID=node1 dotnet run --project src/Confman.Api &
+  CONFMAN_NODE_ID=node2 dotnet run --project src/Confman.Api &
+  CONFMAN_NODE_ID=node3 dotnet run --project src/Confman.Api &
+  sleep 3
+
+  # 4. Verify cluster health
+  for port in 6100 6200 6300; do
+    echo "Node $port:"
+    curl -s http://localhost:$port/health/ready | jq '.cluster'
+  done
+
+
+POST-MIGRATION VERIFICATION:
+
+  ☐ All 3 nodes report: "leaderKnown": true (within 5 seconds)
+  ☐ No "No leader in cluster" in logs after initial election
+  ☐ No "Transition to Candidate state" in logs (indicates invariant OK)
+  ☐ Snapshot timing: < 100ms (confirm in logs)
+  ☐ No JsonException in logs (Phase 2 null-byte handling working)
+
+STRESS TEST (High-volume blob pointer writes):
+
+  • Write 10K configs → measure snapshot time
+  • Verify latency stays constant (should be <50ms per write)
+  • Monitor for "Transition to Candidate state" (should NOT appear)
+  • Verify invariant: observed_snapshot_time < 1000ms < 10000ms
+
+GOTCHAS TO AVOID:
+  ❌ Don't start with --coldStart true (after wipe, use pre-configured members)
+  ❌ Don't revert SnapshotInterval (keep at 50, not 100+)
+  ❌ Don't proceed if leaderKnown=false persists >5 seconds
+  ❌ Don't skip stress test (regressions only show under load)
+
+SOURCE FILES:
+  /docs/solutions/2026-02-01-dotnext-coldstart-leader-tracking-loss.md
+  /docs/solutions/2026-02-08-raft-snapshot-starvation-spurious-elections.md
+  /docs/solutions/dotnext-wal-null-bytes-log-entry-deserialization.md
+
+================================================================================
+IMPLEMENTATION ORDER (CRITICAL PATH)
+================================================================================
+
+1. Phase 1: Decide static bootstrap → document in design
+2. Phase 2: Null-byte skipping + tests (blocks Phase 6)
+3. Phase 3: Streaming snapshots + SnapshotInterval tuning
+4. Phase 4: Blob streaming (simple, decoupled)
+5. Phase 5: Auth middleware (simple, decoupled)
+6. Phase 6: Migration with runbook + stress test
+
+================================================================================
+ADDITIONAL RESOURCES
+================================================================================
+
+Detailed learnings:     /docs/solutions/BLOB_STORE_LEARNINGS.md
+Implementation checklist: BLOB_STORE_CHECKLIST.md
+
+Related solution docs:
+  • /docs/solutions/2026-02-08-large-payload-performance-insights.md
+  • /docs/solutions/2026-02-08-raft-snapshot-starvation-spurious-elections.md
+  • /docs/solutions/dotnext-wal-null-bytes-log-entry-deserialization.md
+  • /docs/solutions/2026-01-24-dotnext-raft-cluster-members-configuration.md
+  • /docs/solutions/2026-02-01-dotnext-coldstart-leader-tracking-loss.md
+
+================================================================================
+END QUICK REFERENCE
+================================================================================

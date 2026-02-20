@@ -72,7 +72,9 @@ public static class AuthExtensions
     {
         services.AddAuthentication(ApiKeyAuthenticationOptions.DefaultScheme)
             .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(
-                ApiKeyAuthenticationOptions.DefaultScheme, _ => { });
+                ApiKeyAuthenticationOptions.DefaultScheme, _ => { })
+            .AddScheme<ClusterTokenAuthOptions, ClusterTokenAuthenticationHandler>(
+                ClusterTokenAuthOptions.DefaultScheme, _ => { });
 
         services.AddAuthorization(options =>
         {
@@ -80,6 +82,12 @@ public static class AuthExtensions
             options.DefaultPolicy = new AuthorizationPolicyBuilder()
                 .RequireAuthenticatedUser()
                 .Build();
+
+            // Cluster internal policy for inter-node blob replication
+            options.AddPolicy("ClusterInternal", policy =>
+                policy.AddAuthenticationSchemes(ClusterTokenAuthOptions.DefaultScheme)
+                    .RequireAuthenticatedUser()
+                    .RequireRole("cluster"));
 
             // Admin policy for management operations
             options.AddPolicy("Admin", policy =>

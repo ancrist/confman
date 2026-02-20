@@ -12,8 +12,10 @@ public class SnapshotData
 {
     /// <summary>
     /// Snapshot format version for forward compatibility.
+    /// Version 2: all configs have inline values.
+    /// Version 3: configs may have BlobId (blob-backed entries with Value=null).
     /// </summary>
-    [Key(0)] public int Version { get; set; } = 2;
+    [Key(0)] public int Version { get; set; } = 3;
 
     /// <summary>
     /// All configuration entries in the store.
@@ -39,4 +41,10 @@ public class SnapshotData
     /// When this snapshot was created.
     /// </summary>
     [Key(5)] public DateTimeOffset Timestamp { get; set; }
+
+    /// <summary>
+    /// List of all BlobIds referenced by blob-backed config entries.
+    /// Used for post-restore diagnostics (detect missing blobs).
+    /// </summary>
+    [Key(6)] public List<string> BlobManifest { get; set; } = [];
 }

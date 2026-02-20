@@ -46,6 +46,7 @@ start_cluster() {
 
         echo "  Starting ${node} on port ${port}..."
         ASPNETCORE_ENVIRONMENT="${node}" \
+        BlobStore__ClusterToken="${CONFMAN_CLUSTER_TOKEN:-confman_dev_cluster_token}" \
             nohup dotnet run --project "${REPO_ROOT}/${PROJECT}" \
                 -c Release --no-build --no-launch-profile \
                 --urls "http://127.0.0.1:${port}" \
