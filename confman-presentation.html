@@ -335,38 +335,37 @@
 
   /* Architecture diagram - Node internals */
   .arch-cluster {
-    display: flex; gap: 24px; justify-content: center; align-items: flex-start;
-    width: 100%; max-width: 960px; margin: 12px 0;
+    display: flex; gap: 32px; justify-content: center; align-items: flex-start;
+    width: 100%; max-width: 1000px; margin: 8px 0;
   }
   .arch-node {
-    flex: 1; max-width: 280px; background: var(--bg-card);
+    flex: 1; max-width: 340px; background: var(--bg-card);
     border: 2px solid var(--border); border-radius: 16px;
-    padding: 16px; position: relative; overflow: hidden;
+    padding: 20px; position: relative; overflow: hidden;
     transition: border-color 0.4s, box-shadow 0.4s;
   }
-  .arch-node.is-leader { border-color: var(--cyan); box-shadow: 0 0 20px rgba(34,211,238,0.15); }
+  .arch-node.is-leader { border-color: var(--cyan); box-shadow: 0 0 24px rgba(34,211,238,0.15); }
   .arch-node-header {
     display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
   }
-  .arch-node-name { font-family: var(--mono); font-size: 14px; font-weight: 700; }
+  .arch-node-name { font-family: var(--mono); font-size: 15px; font-weight: 700; }
   .arch-node-role {
-    font-family: var(--mono); font-size: 10px; padding: 2px 8px;
+    font-family: var(--mono); font-size: 10px; padding: 3px 10px;
     border-radius: 4px; text-transform: uppercase; letter-spacing: 1px;
   }
   .arch-node.is-leader .arch-node-role { background: rgba(34,211,238,0.15); color: var(--cyan); }
   .arch-node:not(.is-leader) .arch-node-role { background: rgba(100,116,139,0.2); color: var(--text-muted); }
 
   .arch-node-layer {
-    display: flex; align-items: center; gap: 8px;
-    padding: 6px 10px; margin-bottom: 4px;
-    border-radius: 6px; font-size: 11px; font-family: var(--mono);
-    border: 1px solid transparent;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; font-size: 12px; font-family: var(--mono);
+    border: 1px solid transparent; border-radius: 8px;
   }
   .arch-node-layer .layer-dot {
-    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
   }
-  .arch-node-layer .layer-name { color: var(--text-dim); }
+  .arch-node-layer .layer-name { color: var(--text-dim); font-weight: 600; }
   .arch-node-layer.l-api { background: rgba(34,211,238,0.06); border-color: rgba(34,211,238,0.15); }
   .arch-node-layer.l-api .layer-dot { background: var(--cyan); }
   .arch-node-layer.l-api .layer-name { color: var(--cyan); }
@@ -380,25 +379,38 @@
   .arch-node-layer.l-store .layer-dot { background: var(--pink); }
   .arch-node-layer.l-store .layer-name { color: var(--pink); }
 
+  /* Layer arrow between layers inside a node */
+  .layer-arrow {
+    display: flex; align-items: center; justify-content: center;
+    padding: 2px 0; color: var(--text-muted); font-size: 10px; gap: 6px;
+  }
+  .layer-arrow::before {
+    content: ''; width: 1px; height: 10px; background: var(--border);
+  }
+  .layer-arrow-label {
+    font-family: var(--mono); font-size: 9px; color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+
   .arch-node-storage {
-    margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border);
-    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border);
+    display: flex; gap: 8px; flex-wrap: wrap;
   }
   .arch-node-storage .storage-chip {
-    font-family: var(--mono); font-size: 10px; padding: 2px 8px;
+    font-family: var(--mono); font-size: 10px; padding: 3px 10px;
     border-radius: 4px; background: rgba(100,116,139,0.15); color: var(--text-muted);
   }
 
   .arch-arrow-group {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 4px; min-width: 48px; padding-top: 40px;
+    gap: 6px; min-width: 56px; padding-top: 50px;
   }
   .arch-arrow {
     font-family: var(--mono); font-size: 10px; color: var(--text-muted);
     white-space: nowrap;
   }
   .arch-arrow-line {
-    width: 36px; height: 2px; position: relative;
+    width: 40px; height: 2px; position: relative;
   }
   .arch-arrow-line::after {
     content: ''; position: absolute; right: -1px; top: -3px;
@@ -557,12 +569,12 @@
         <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px; border-top:3px solid var(--cyan);">
           <h3 style="font-size:14px; margin-bottom:10px;"><span class="accent">Functional</span> Requirements</h3>
           <ul style="list-style:none; font-size:13px; color:var(--text-dim);">
-            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--cyan);">&#9656;</span> Hierarchical key-value store with namespaces</li>
-            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--cyan);">&#9656;</span> RBAC: viewer, editor, publisher, admin</li>
-            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--cyan);">&#9656;</span> Four-eyes publishing workflow</li>
-            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--cyan);">&#9656;</span> Schema validation (JSON Schema)</li>
-            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--cyan);">&#9656;</span> Immutable version history + audit trail</li>
-            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--cyan);">&#9656;</span> REST API with content negotiation</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--green);">&#9656;</span> <span style="color:var(--green);">&#10003;</span> Key-value store with namespaces <span style="font-size:10px; color:var(--text-muted);">(flat, not hierarchical)</span></li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--green);">&#9656;</span> <span style="color:var(--green);">&#10003;</span> RBAC: viewer, editor, publisher, admin</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--text-muted);">&#9656;</span> <span style="color:var(--text-muted);">&#9744;</span> <span style="color:var(--text-muted);">Four-eyes publishing workflow</span> <span style="font-size:10px; color:var(--text-muted);">(v2)</span></li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--text-muted);">&#9656;</span> <span style="color:var(--text-muted);">&#9744;</span> <span style="color:var(--text-muted);">Schema validation (JSON Schema)</span> <span style="font-size:10px; color:var(--text-muted);">(v2)</span></li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--green);">&#9656;</span> <span style="color:var(--green);">&#10003;</span> Immutable version history + audit trail</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--green);">&#9656;</span> <span style="color:var(--green);">&#10003;</span> REST API <span style="font-size:10px; color:var(--text-muted);">(JSON only, no content negotiation)</span></li>
           </ul>
         </div>
         <!-- Non-functional -->
@@ -571,10 +583,10 @@
           <ul style="list-style:none; font-size:13px; color:var(--text-dim);">
             <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> <strong style="color:var(--text);">100K+</strong> keys, <strong style="color:var(--text);">100&ndash;200</strong> req/sec</li>
             <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> <strong style="color:var(--text);">70&ndash;90%</strong> reads, burst write patterns</li>
-            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> Strong consistency for writes, bounded staleness for reads</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> Strong consistency for writes, <span style="color:var(--green);">linearizable</span> reads</li>
             <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> Survive single-node failure (fault tolerant)</li>
             <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> VMs / bare metal &mdash; no Kubernetes</li>
-            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> Azure AD / OIDC for authentication</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> <span style="text-decoration:line-through; color:var(--text-muted);">Azure AD / OIDC</span> &rarr; API keys (<code style="font-size:11px;">X-API-Key</code>)</li>
           </ul>
         </div>
       </div>
@@ -589,104 +601,337 @@
     </div>
   </div>
 
-  <!-- Slide 3: Brainstorming Process -->
+  <!-- Slide 3: Brainstorm 1 — System Architecture -->
   <div class="slide" data-slide="2">
     <div class="slide-inner stagger">
-      <div style="font-family:var(--mono); font-size:12px; color:var(--green); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">January 23, 2026</div>
-      <h2>The Brainstorming Process</h2>
-      <p style="margin-bottom:16px;">Four brainstorm sessions, each producing a document with <strong style="color:var(--text);">decisions</strong>, <strong style="color:var(--text);">alternatives considered</strong>, and <strong style="color:var(--text);">open questions</strong>:</p>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
+        <div style="font-family:var(--mono); font-size:12px; color:var(--cyan); letter-spacing:2px; text-transform:uppercase;">Brainstorm 1 of 4</div>
+        <div style="flex:1; height:1px; background:var(--border);"></div>
+        <div style="font-family:var(--mono); font-size:11px; color:var(--text-muted);">Jan 23</div>
+      </div>
+      <h2>System Architecture</h2>
+      <p style="margin-bottom:16px;">The central question: <em style="color:var(--text);">how do we distribute a configuration store across multiple nodes?</em></p>
 
-      <!-- 4 brainstorm cards with Q&A -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; width:100%; max-width:920px;">
+      <div style="display:flex; gap:20px; width:100%; max-width:920px; flex-wrap:wrap;">
+        <!-- Key Question -->
+        <div style="flex:1; min-width:300px;">
+          <div style="font-family:var(--mono); font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Questions Answered</div>
+          <ul class="feature-list" style="max-width:100%;">
+            <li><span class="icon accent">?</span><div><strong style="color:var(--text);">How many clusters?</strong><p style="font-size:12px;">One. 200 req/s fits a single-leader write capacity.</p></div></li>
+            <li><span class="icon accent">?</span><div><strong style="color:var(--text);">Node discovery?</strong><p style="font-size:12px;">Static config &mdash; stable VM addresses in <code>appsettings.json</code>.</p></div></li>
+            <li><span class="icon accent">?</span><div><strong style="color:var(--text);">Consensus library?</strong><p style="font-size:12px;">DotNext.Net.Cluster &mdash; production-ready Raft for .NET.</p></div></li>
+            <li><span class="icon accent">?</span><div><strong style="color:var(--text);">Storage engine?</strong><p style="font-size:12px;"><span style="text-decoration:line-through; color:var(--text-muted);">RocksDB or LiteDB</span> &rarr; <strong style="color:var(--green);">LiteDB</strong> chosen &mdash; embedded NoSQL, zero ops.</p></div></li>
+            <li><span class="icon accent">?</span><div><strong style="color:var(--text);">How do reads work?</strong><p style="font-size:12px;"><span style="text-decoration:line-through; color:var(--text-muted);">Bounded staleness</span> &rarr; <strong style="color:var(--green);">linearizable</strong> via ReadBarrier on every GET.</p></div></li>
+          </ul>
+        </div>
 
-        <!-- System Architecture -->
-        <div class="card" style="border-top:3px solid var(--cyan); padding:16px;">
-          <h3 style="font-size:14px; margin-bottom:8px;"><span class="accent">1.</span> System Architecture</h3>
-          <div style="font-size:12px; color:var(--text-dim); line-height:1.5;">
-            <div style="margin-bottom:6px;">
-              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">DECIDED</span><br>
-              <span style="color:var(--text);">Single Raft cluster</span> &mdash; all nodes identical<br>
-              <span style="color:var(--text);">Static membership</span> &mdash; addresses in config<br>
-              <span style="color:var(--text);">DotNext.Net.Cluster</span> for consensus
+        <!-- Decision + Rejected -->
+        <div style="flex:0 0 280px;">
+          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:10px; border-left:3px solid var(--green);">
+            <div style="font-family:var(--mono); font-size:10px; color:var(--green); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Decided</div>
+            <div style="font-size:13px; color:var(--text-dim); line-height:1.6;">
+              Single Raft cluster, 3 or 5 nodes<br>
+              All nodes identical (API + Raft + KV)<br>
+              Writes forwarded to leader<br>
+              HTTP for inter-node transport<br>
+              <span style="text-decoration:line-through; color:var(--text-muted);">Azure AD / OIDC</span> &rarr; API keys shipped
             </div>
-            <div style="padding-top:6px; border-top:1px solid var(--border);">
-              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">REJECTED</span><br>
-              <span class="dim">Sharding by namespace</span> &mdash; unnecessary at this scale<br>
-              <span class="dim">Non-voting read replicas</span> &mdash; followers can serve reads
+          </div>
+          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px; border-left:3px solid var(--red);">
+            <div style="font-family:var(--mono); font-size:10px; color:var(--red); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Rejected</div>
+            <div style="font-size:13px; color:var(--text-dim); line-height:1.6;">
+              <span style="text-decoration:line-through; color:var(--text-muted);">Sharding by namespace</span><br>
+              <span class="dim" style="font-size:11px;">Routing complexity for a problem we don't have</span><br>
+              <span style="text-decoration:line-through; color:var(--text-muted);">Non-voting read replicas</span><br>
+              <span class="dim" style="font-size:11px;">Followers already serve reads</span>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Data Model -->
-        <div class="card" style="border-top:3px solid var(--green); padding:16px;">
-          <h3 style="font-size:14px; margin-bottom:8px;"><span class="green">2.</span> Data Model</h3>
-          <div style="font-size:12px; color:var(--text-dim); line-height:1.5;">
-            <div style="margin-bottom:6px;">
-              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">DECIDED</span><br>
-              <span style="color:var(--text);">Document-oriented</span> &mdash; self-contained, no joins<br>
-              <span style="color:var(--text);">Cascading inheritance</span> &mdash; RBAC + schemas<br>
-              <span style="color:var(--text);">External secret refs</span> &mdash; <code style="font-size:11px;">keyvault://</code> pointers
+      <div style="margin-top:12px; padding:10px 16px; background:rgba(34,211,238,0.05); border:1px solid rgba(34,211,238,0.15); border-radius:8px; font-size:13px; color:var(--text-dim); max-width:920px; width:100%;">
+        <strong class="accent">Spec impact:</strong> This session locked the deployment model &mdash; uniform nodes, no Kubernetes, static membership. LiteDB was later chosen over RocksDB for zero-ops simplicity, and reads ended up <em>stricter</em> than planned (linearizable via ReadBarrier instead of bounded staleness).
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 4: Brainstorm 2 — Data Model -->
+  <div class="slide" data-slide="3">
+    <div class="slide-inner stagger">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
+        <div style="font-family:var(--mono); font-size:12px; color:var(--green); letter-spacing:2px; text-transform:uppercase;">Brainstorm 2 of 4</div>
+        <div style="flex:1; height:1px; background:var(--border);"></div>
+        <div style="font-family:var(--mono); font-size:11px; color:var(--text-muted);">Jan 23</div>
+      </div>
+      <h2>Data Model</h2>
+      <p style="margin-bottom:16px;">The central question: <em style="color:var(--text);">how do we structure hierarchical configuration data with governance?</em></p>
+
+      <div style="display:flex; gap:20px; width:100%; max-width:920px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:300px;">
+          <div style="font-family:var(--mono); font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Questions Answered</div>
+          <ul class="feature-list" style="max-width:100%;">
+            <li><span class="icon green">?</span><div><strong style="color:var(--text);">Relational or document?</strong><p style="font-size:12px;">Document-oriented &mdash; self-contained, REST-friendly, no joins.</p></div></li>
+            <li><span class="icon green">?</span><div><strong style="color:var(--text);">How do permissions cascade?</strong><p style="font-size:12px;"><span style="text-decoration:line-through; color:var(--text-muted);">Walk up parent chain</span> &rarr; flat namespaces with prefix-match auth. True hierarchy deferred.</p></div></li>
+            <li><span class="icon green">?</span><div><strong style="color:var(--text);">How to handle secrets?</strong><p style="font-size:12px;"><span style="text-decoration:line-through; color:var(--text-muted);"><code>keyvault://</code> references</span> &rarr; not yet implemented. Values stored as plain strings.</p></div></li>
+            <li><span class="icon green">?</span><div><strong style="color:var(--text);">Mutable or immutable history?</strong><p style="font-size:12px;">Immutable &mdash; every version retained for audit and rollback.</p></div></li>
+            <li><span class="icon green">?</span><div><strong style="color:var(--text);">How many RBAC roles?</strong><p style="font-size:12px;">Four fixed: viewer, editor, publisher, admin. Custom roles deferred.</p></div></li>
+          </ul>
+        </div>
+
+        <div style="flex:0 0 280px;">
+          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:10px; border-left:3px solid var(--green);">
+            <div style="font-family:var(--mono); font-size:10px; color:var(--green); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Core Entities</div>
+            <div style="font-size:12px; color:var(--text-dim); line-height:1.7; font-family:var(--mono);">
+              <span style="color:var(--cyan);">Namespace</span> &rarr; ownership + RBAC<br>
+              <span style="color:var(--cyan);">ConfigEntry</span> &rarr; key + value + version<br>
+              <span style="color:var(--text-muted); text-decoration:line-through;">Schema</span> <span style="font-size:10px; color:var(--text-muted);">(v2)</span><br>
+              <span style="color:var(--cyan);">AuditEvent</span> &rarr; immutable record<br>
+              <span style="color:var(--text-muted); text-decoration:line-through;">PublishRequest</span> <span style="font-size:10px; color:var(--text-muted);">(v2)</span>
             </div>
-            <div style="padding-top:6px; border-top:1px solid var(--border);">
-              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">OPEN QUESTIONS</span><br>
-              <span class="dim">History chunking strategy?</span><br>
-              <span class="dim">Parent deletion &rarr; children?</span>
+          </div>
+          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px; border-left:3px solid var(--purple);">
+            <div style="font-family:var(--mono); font-size:10px; color:var(--purple); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Open Questions</div>
+            <div style="font-size:12px; color:var(--text-muted); line-height:1.6;">
+              When to chunk history? (time/count?)<br>
+              Parent deletion &rarr; orphan children?<br>
+              Cache invalidation on parent change?<br>
+              Compression for large JSON values?
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- API Design -->
-        <div class="card" style="border-top:3px solid var(--amber); padding:16px;">
-          <h3 style="font-size:14px; margin-bottom:8px;"><span class="amber">3.</span> API Design</h3>
-          <div style="font-size:12px; color:var(--text-dim); line-height:1.5;">
-            <div style="margin-bottom:6px;">
-              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">DECIDED</span><br>
-              <span style="color:var(--text);">URL versioning</span> &mdash; <code style="font-size:11px;">/api/v1/...</code><br>
-              <span style="color:var(--text);">RFC 7807 errors</span> &mdash; machine-readable<br>
-              <span style="color:var(--text);">Static API keys</span> &mdash; <code style="font-size:11px;">X-API-Key</code> header<br>
-              <span style="color:var(--text);">Cursor pagination</span> &mdash; no skip/dup issues
+      <div style="margin-top:12px; padding:10px 16px; background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.15); border-radius:8px; font-size:13px; color:var(--text-dim); max-width:920px; width:100%;">
+        <strong class="green">Spec impact:</strong> Of 5 planned entities, 3 shipped (Namespace, ConfigEntry, AuditEvent). Schema validation and PublishRequest deferred to v2. Namespaces are flat strings &mdash; hierarchical paths and cascading RBAC remain aspirational. The "immutable history" decision became the audit replication challenge (bugs #2 and #3).
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 5: Brainstorm 3 — API Design -->
+  <div class="slide" data-slide="4">
+    <div class="slide-inner stagger">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
+        <div style="font-family:var(--mono); font-size:12px; color:var(--amber); letter-spacing:2px; text-transform:uppercase;">Brainstorm 3 of 4</div>
+        <div style="flex:1; height:1px; background:var(--border);"></div>
+        <div style="font-family:var(--mono); font-size:11px; color:var(--text-muted);">Jan 23</div>
+      </div>
+      <h2>API Design</h2>
+      <p style="margin-bottom:16px;">The central question: <em style="color:var(--text);">how do clients interact with a distributed config store?</em></p>
+
+      <div style="display:flex; gap:20px; width:100%; max-width:920px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:300px;">
+          <div style="font-family:var(--mono); font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Questions Answered</div>
+          <ul class="feature-list" style="max-width:100%;">
+            <li><span class="icon amber">?</span><div><strong style="color:var(--text);">Versioning strategy?</strong><p style="font-size:12px;">URL path (<code>/api/v1/</code>) &mdash; explicit, easy routing.</p></div></li>
+            <li><span class="icon amber">?</span><div><strong style="color:var(--text);">Error format?</strong><p style="font-size:12px;">RFC 7807 Problem Details &mdash; ASP.NET Core native.</p></div></li>
+            <li><span class="icon amber">?</span><div><strong style="color:var(--text);">Auth mechanism?</strong><p style="font-size:12px;">Static API keys in <code>X-API-Key</code> header. Simple, no management API.</p></div></li>
+            <li><span class="icon amber">?</span><div><strong style="color:var(--text);">Bulk operations?</strong><p style="font-size:12px;">No &mdash; one resource per request, consistent with workflow.</p></div></li>
+            <li><span class="icon amber">?</span><div><strong style="color:var(--text);">Pagination?</strong><p style="font-size:12px;"><span style="text-decoration:line-through; color:var(--text-muted);">Cursor-based</span> &rarr; simple <code>?limit=N</code> shipped. Cursors deferred.</p></div></li>
+          </ul>
+        </div>
+
+        <div style="flex:0 0 300px;">
+          <!-- Actual endpoints implemented -->
+          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:10px; border-left:3px solid var(--green);">
+            <div style="font-family:var(--mono); font-size:10px; color:var(--green); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Endpoints Built</div>
+            <div style="font-size:10px; font-family:var(--mono); color:var(--text-dim); line-height:1.7;">
+              <div style="color:var(--text-muted); margin-bottom:2px; font-size:9px;">&mdash; Config &mdash;</div>
+              <span style="color:var(--green);">GET</span> /namespaces/{ns}/config<br>
+              <span style="color:var(--green);">GET</span> /namespaces/{ns}/config/{key}<br>
+              <span style="color:var(--amber);">PUT</span> /namespaces/{ns}/config/{key}<br>
+              <span style="color:var(--red);">DEL</span> /namespaces/{ns}/config/{key}<br>
+              <div style="color:var(--text-muted); margin:4px 0 2px; font-size:9px;">&mdash; Namespaces &mdash;</div>
+              <span style="color:var(--green);">GET</span> /namespaces<br>
+              <span style="color:var(--green);">GET</span> /namespaces/{ns}<br>
+              <span style="color:var(--amber);">PUT</span> /namespaces/{ns}<br>
+              <span style="color:var(--red);">DEL</span> /namespaces/{ns}<br>
+              <div style="color:var(--text-muted); margin:4px 0 2px; font-size:9px;">&mdash; Audit + Health &mdash;</div>
+              <span style="color:var(--green);">GET</span> /namespaces/{ns}/audit<br>
+              <span style="color:var(--green);">GET</span> /health &amp; /health/ready
             </div>
-            <div style="padding-top:6px; border-top:1px solid var(--border);">
-              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">REJECTED</span><br>
-              <span class="dim">Bulk operations</span> &mdash; one resource per request
+          </div>
+          <!-- Deferred features -->
+          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px; border-left:3px solid var(--text-muted);">
+            <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Designed &bull; Not Yet Built</div>
+            <div style="font-size:11px; color:var(--text-muted); line-height:1.6;">
+              <span style="text-decoration:line-through;">/drafts/</span> endpoints<br>
+              <span style="text-decoration:line-through;">/publish-requests/</span> workflow<br>
+              <span style="text-decoration:line-through;">YAML &amp; raw</span> content negotiation<br>
+              <span style="text-decoration:line-through;">ETag</span> conditional caching
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Publishing Workflow -->
-        <div class="card" style="border-top:3px solid var(--pink); padding:16px;">
-          <h3 style="font-size:14px; margin-bottom:8px;"><span class="pink">4.</span> Publishing Workflow</h3>
-          <div style="font-size:12px; color:var(--text-dim); line-height:1.5;">
-            <div style="margin-bottom:6px;">
-              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">DECIDED</span><br>
-              <span style="color:var(--text);">Four-eyes principle</span> &mdash; no self-approval, ever<br>
-              <span style="color:var(--text);">Configurable approvers</span> &mdash; 1-N per namespace<br>
-              <span style="color:var(--text);">Webhook notifications</span> &mdash; Slack, Teams, custom<br>
-              <span style="color:var(--text);">Validate on publish</span> &mdash; drafts can be invalid
+      <div style="margin-top:12px; padding:10px 16px; background:rgba(251,191,36,0.05); border:1px solid rgba(251,191,36,0.15); border-radius:8px; font-size:13px; color:var(--text-dim); max-width:920px; width:100%;">
+        <strong class="amber">Spec impact:</strong> 12 endpoints shipped across 3 controllers. Drafts &amp; publishing workflow deferred to v2 &mdash; the core CRUD + audit foundation was more valuable than governance without users. The <code>leader-required (503)</code> error code foreshadowed the leader forwarding work (Feb 1).
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 6: Brainstorm 4 — Publishing Workflow -->
+  <div class="slide" data-slide="5">
+    <div class="slide-inner stagger">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
+        <div style="font-family:var(--mono); font-size:12px; color:var(--pink); letter-spacing:2px; text-transform:uppercase;">Brainstorm 4 of 4</div>
+        <div style="flex:1; height:1px; background:var(--border);"></div>
+        <div style="font-family:var(--mono); font-size:11px; color:var(--text-muted);">Jan 23</div>
+      </div>
+      <h2>Publishing Workflow <span style="font-size:13px; color:var(--text-muted); font-weight:400; background:rgba(244,114,182,0.1); border:1px solid rgba(244,114,182,0.2); padding:2px 8px; border-radius:4px; margin-left:8px; vertical-align:middle;">v2 — not yet built</span></h2>
+      <p style="margin-bottom:16px;">The central question: <em style="color:var(--text);">how do we govern configuration changes in a distributed system?</em></p>
+
+      <div style="display:flex; gap:20px; width:100%; max-width:920px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:320px;">
+          <div style="font-family:var(--mono); font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Questions Answered</div>
+          <ul class="feature-list" style="max-width:100%;">
+            <li><span class="icon pink">?</span><div><strong style="color:var(--text);">Can someone approve their own change?</strong><p style="font-size:12px;"><strong class="red">Never.</strong> Four-eyes principle enforced &mdash; submitter is locked out of review.</p></div></li>
+            <li><span class="icon pink">?</span><div><strong style="color:var(--text);">How many approvers?</strong><p style="font-size:12px;">Configurable per namespace (1&ndash;N). Admin sets the threshold.</p></div></li>
+            <li><span class="icon pink">?</span><div><strong style="color:var(--text);">When does validation happen?</strong><p style="font-size:12px;">On publish only &mdash; drafts can be invalid. Schema gates the transition.</p></div></li>
+            <li><span class="icon pink">?</span><div><strong style="color:var(--text);">How do rollbacks work?</strong><p style="font-size:12px;">Configurable: instant for production (speed), approval-required for sensitive namespaces (safety).</p></div></li>
+          </ul>
+        </div>
+
+        <div style="flex:0 0 260px;">
+          <!-- State machine -->
+          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:10px; border-left:3px solid var(--pink);">
+            <div style="font-family:var(--mono); font-size:10px; color:var(--pink); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Workflow States</div>
+            <div style="font-family:var(--mono); font-size:12px; line-height:2;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="width:10px;height:10px;border-radius:50%;background:var(--text-muted);flex-shrink:0;"></span>
+                <span style="color:var(--text-dim);">Draft</span>
+              </div>
+              <div style="margin-left:4px; border-left:2px solid var(--border); height:8px;"></div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="width:10px;height:10px;border-radius:50%;background:var(--amber);flex-shrink:0;"></span>
+                <span style="color:var(--amber);">Pending Review</span>
+              </div>
+              <div style="margin-left:4px; border-left:2px solid var(--border); height:8px;"></div>
+              <div style="display:flex; gap:20px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="width:10px;height:10px;border-radius:50%;background:var(--green);flex-shrink:0;"></span>
+                  <span style="color:var(--green);">Approved</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="width:10px;height:10px;border-radius:50%;background:var(--red);flex-shrink:0;"></span>
+                  <span style="color:var(--red);">Rejected</span>
+                </div>
+              </div>
+              <div style="margin-left:4px; border-left:2px solid var(--border); height:8px;"></div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="width:10px;height:10px;border-radius:50%;background:var(--cyan);flex-shrink:0;"></span>
+                <span style="color:var(--cyan);">Published</span>
+              </div>
             </div>
-            <div style="padding-top:6px; border-top:1px solid var(--border);">
-              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">DEFERRED TO V2</span><br>
-              <span class="dim">Scheduled publishing</span><br>
-              <span class="dim">Change windows</span>
+          </div>
+          <!-- Deferred -->
+          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px; border-left:3px solid var(--text-muted);">
+            <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Deferred to V2</div>
+            <div style="font-size:12px; color:var(--text-muted); line-height:1.6;">
+              Scheduled publishing<br>
+              Change windows<br>
+              Auto-approve patterns<br>
+              Approval delegation
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px; padding:10px 16px; background:rgba(244,114,182,0.05); border:1px solid rgba(244,114,182,0.15); border-radius:8px; font-size:13px; color:var(--text-dim); max-width:920px; width:100%;">
+        <strong class="pink">Spec impact:</strong> This entire workflow remains a v2 goal &mdash; the team prioritized getting the distributed core right first. Today, writes go directly to Raft without drafts or approval. The governance layer is the biggest gap between the design docs and the shipped system.
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 7: Brainstorm Summary -->
+  <div class="slide" data-slide="6">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--purple); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Brainstorming Complete</div>
+      <h2>From Questions to Spec</h2>
+      <p style="margin-bottom:20px;">Four sessions, one day. Each brainstorm started with open questions and ended with locked decisions:</p>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; width:100%; max-width:920px; margin-bottom:20px;">
+        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:14px; text-align:center; border-top:3px solid var(--cyan);">
+          <div style="font-family:var(--mono); font-size:24px; font-weight:700; color:var(--cyan);">7</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Architecture<br>decisions</div>
+        </div>
+        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:14px; text-align:center; border-top:3px solid var(--green);">
+          <div style="font-family:var(--mono); font-size:24px; font-weight:700; color:var(--green);">10</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Data model<br>decisions</div>
+        </div>
+        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:14px; text-align:center; border-top:3px solid var(--amber);">
+          <div style="font-family:var(--mono); font-size:24px; font-weight:700; color:var(--amber);">9</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">API design<br>decisions</div>
+        </div>
+        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:14px; text-align:center; border-top:3px solid var(--pink);">
+          <div style="font-family:var(--mono); font-size:24px; font-weight:700; color:var(--pink);">9</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Workflow<br>decisions</div>
+        </div>
+      </div>
+
+      <!-- How brainstorms shaped the spec -->
+      <div style="width:100%; max-width:920px;">
+        <div style="font-family:var(--mono); font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">How Brainstorming Shaped the Spec</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div style="padding:12px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; font-size:13px;">
+            <strong style="color:var(--cyan);">Constrained scope early</strong>
+            <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">Rejecting sharding, bulk ops, and custom roles upfront kept the v1 buildable in 30 days.</p>
+          </div>
+          <div style="padding:12px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; font-size:13px;">
+            <strong style="color:var(--green);">Surfaced hard problems</strong>
+            <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">Open questions about history chunking and large values became the blob store feature (Feb 12).</p>
+          </div>
+          <div style="padding:12px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; font-size:13px;">
+            <strong style="color:var(--amber);">Made trade-offs explicit</strong>
+            <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">"Bounded staleness OK" was later upgraded to linearizable reads when the cost proved low.</p>
+          </div>
+          <div style="padding:12px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; font-size:13px;">
+            <strong style="color:var(--pink);">Separated core from governance</strong>
+            <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">Publishing workflow, schemas, and secrets designed but deferred &mdash; distributed core shipped first, governance is the v2 roadmap.</p>
           </div>
         </div>
       </div>
 
       <!-- Outcome -->
-      <div style="margin-top:16px; text-align:center; padding:12px 20px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; max-width:920px; width:100%;">
-        <span style="color:var(--text-muted); font-size:13px;">Result:</span>
-        <span style="color:var(--text); font-size:13px; font-weight:600;"> 26 key decisions locked</span>
-        <span style="color:var(--text-muted); font-size:13px;"> &bull; </span>
-        <span style="color:var(--text); font-size:13px; font-weight:600;">4 alternatives rejected with rationale</span>
-        <span style="color:var(--text-muted); font-size:13px;"> &bull; </span>
-        <span style="color:var(--text); font-size:13px; font-weight:600;">12 open questions catalogued</span>
+      <div style="margin-top:16px; text-align:center; padding:14px 20px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; max-width:920px; width:100%;">
+        <span style="font-size:14px; color:var(--text);">The entire initial implementation then landed as <span style="color:var(--cyan); font-family:var(--mono); font-weight:700;">ONE commit</span> &mdash; PR #1</span>
       </div>
     </div>
   </div>
 
-  <!-- Slide 4: The Vision -->
-  <div class="slide" data-slide="3">
+  <!-- Slide 8: Design First -->
+  <div class="slide" data-slide="7">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--amber); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">January 23</div>
+      <h2>Design First, Code Second</h2>
+      <p style="margin-bottom:20px;">Four brainstorm documents before a single line of code:</p>
+      <div class="cards cards-2">
+        <div class="card" style="border-top: 3px solid var(--cyan);">
+          <h3 class="accent">System Architecture</h3>
+          <p>Single Raft cluster. All nodes identical. Reject sharding and read replicas.</p>
+        </div>
+        <div class="card" style="border-top: 3px solid var(--green);">
+          <h3 class="green">Data Model</h3>
+          <p>Flat namespaces, 4 RBAC roles, immutable version history.</p>
+        </div>
+        <div class="card" style="border-top: 3px solid var(--amber);">
+          <h3 class="amber">API Design</h3>
+          <p>REST with URL versioning, RFC 7807 errors, JSON-only responses.</p>
+        </div>
+        <div class="card" style="border-top: 3px solid var(--pink);">
+          <h3 class="pink">Publishing Workflow</h3>
+          <p>Four-eyes governance principle with configurable approvals (v2 feature).</p>
+        </div>
+      </div>
+      <div style="margin-top:24px; text-align:center; padding:16px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px;">
+        <span style="color:var(--text-muted); font-size:14px;">Then the entire initial implementation landed as</span>
+        <span style="color:var(--cyan); font-family:var(--mono); font-size:16px; font-weight:700;"> ONE commit</span>
+        <span style="color:var(--text-muted); font-size:14px;"> &mdash; PR #1</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 9: The Vision -->
+  <div class="slide" data-slide="8">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--text-muted); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">The Problem</div>
       <h2>Replace a <span class="red">15 GB</span> git repo of JSON configs</h2>
@@ -709,173 +954,166 @@
         </div>
       </div>
 
-      <div style="margin-top:20px;">
-        <div style="font-family:var(--mono); font-size:12px; color:var(--text-muted); letter-spacing:2px; text-transform:uppercase; margin-bottom:12px;">Technology Stack</div>
-        <div class="phase-chips">
-          <span class="phase-chip" style="border-color:var(--cyan); color:var(--cyan);">.NET 10</span>
-          <span class="phase-chip" style="border-color:var(--green); color:var(--green);">DotNext Raft</span>
-          <span class="phase-chip" style="border-color:var(--amber); color:var(--amber);">LiteDB</span>
-          <span class="phase-chip" style="border-color:var(--pink); color:var(--pink);">ASP.NET Core REST</span>
-          <span class="phase-chip" style="border-color:var(--purple); color:var(--purple);">Serilog</span>
+      <div style="margin-top:16px; width:100%; max-width:700px;">
+        <div style="font-family:var(--mono); font-size:12px; color:var(--text-muted); letter-spacing:2px; text-transform:uppercase; margin-bottom:10px;">Technology Stack</div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--cyan);">
+            <span style="font-family:var(--mono); font-size:14px; font-weight:700; color:var(--cyan); min-width:160px;">.NET 10</span>
+            <span style="font-size:12px; color:var(--text-dim);">Runtime &amp; platform &mdash; top-of-tree preview for latest perf improvements</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--green);">
+            <span style="font-family:var(--mono); font-size:14px; font-weight:700; color:var(--green); min-width:160px;">DotNext Raft</span>
+            <span style="font-size:12px; color:var(--text-dim);">Consensus &mdash; WAL, log replication, snapshotting, leader election over HTTP</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--amber);">
+            <span style="font-family:var(--mono); font-size:14px; font-weight:700; color:var(--amber); min-width:160px;">LiteDB</span>
+            <span style="font-size:12px; color:var(--text-dim);">State machine storage &mdash; embedded NoSQL, zero ops, <code style="font-size:11px;">Connection=direct</code></span>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--pink);">
+            <span style="font-family:var(--mono); font-size:14px; font-weight:700; color:var(--pink); min-width:160px;">ASP.NET Core</span>
+            <span style="font-size:12px; color:var(--text-dim);">REST API + Raft transport &mdash; both client and inter-node traffic over HTTP</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--purple);">
+            <span style="font-family:var(--mono); font-size:14px; font-weight:700; color:var(--purple); min-width:160px;">Serilog</span>
+            <span style="font-size:12px; color:var(--text-dim);">Structured logging &mdash; correlation IDs, JSON output, per-request context</span>
+          </div>
         </div>
       </div>
-      <p style="margin-top:16px;">Architecture: <strong style="color:var(--text);">single 3-node Raft cluster</strong>, all nodes identical. Reject sharding as premature &mdash; 200 req/s capacity far exceeds the ~50 writes/day workload.</p>
     </div>
   </div>
 
-  <!-- Slide 5: Architecture -->
-  <div class="slide" data-slide="4">
+  <!-- Slide 10: Architecture -->
+  <div class="slide" data-slide="9">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--cyan); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Architecture</div>
-      <h2>Node Architecture</h2>
-      <p style="margin-bottom:4px;">Every node runs the <strong style="color:var(--text);">identical full stack</strong>. The leader handles writes; any node can serve reads.</p>
+      <h2>Node Internals</h2>
+      <p style="margin-bottom:12px;">Every node runs the <strong style="color:var(--text);">identical full stack</strong>. The leader handles writes; any node can serve reads.</p>
 
-      <!-- 3-node cluster diagram with internal layers -->
-      <div class="arch-cluster">
-        <!-- Node 1 (Leader) -->
-        <div class="arch-node is-leader">
+      <div style="display:flex; gap:40px; align-items:flex-start; width:100%; max-width:1000px; flex-wrap:wrap; justify-content:center;">
+
+        <!-- Detailed single node with inter-layer arrows -->
+        <div class="arch-node is-leader" style="max-width:380px; flex:0 0 380px;">
           <div class="arch-node-header">
-            <span class="arch-node-name accent">Node 1 <span class="dim" style="font-weight:400;">:6100</span></span>
-            <span class="arch-node-role">Leader</span>
+            <span class="arch-node-name accent">Every Node</span>
+            <span class="arch-node-role" style="background:rgba(34,211,238,0.15); color:var(--cyan);">Identical Stack</span>
           </div>
+
+          <!-- Layer: REST API -->
           <div class="arch-node-layer l-api">
             <span class="layer-dot"></span>
             <span class="layer-name">REST API</span>
-            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Controllers</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Config, Namespace, Audit controllers</span>
           </div>
+
+          <!-- Arrow: API → Middleware -->
+          <div class="layer-arrow">
+            <span class="layer-arrow-label">routes request</span>
+          </div>
+
+          <!-- Layer: Middleware -->
           <div class="arch-node-layer l-mw">
             <span class="layer-dot"></span>
             <span class="layer-name">Middleware</span>
-            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Auth + ReadBarrier</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">ApiKey auth + ReadBarrier</span>
           </div>
+
+          <!-- Arrow: Middleware → Raft -->
+          <div class="layer-arrow">
+            <span class="layer-arrow-label">validates &amp; ensures linearizability</span>
+          </div>
+
+          <!-- Layer: Raft Consensus -->
           <div class="arch-node-layer l-raft">
             <span class="layer-dot"></span>
             <span class="layer-name">Raft Consensus</span>
-            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Batching + SM</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Batching + state machine</span>
           </div>
+
+          <!-- Arrow: Raft → Storage -->
+          <div class="layer-arrow">
+            <span class="layer-arrow-label">applies committed commands</span>
+          </div>
+
+          <!-- Layer: Storage -->
           <div class="arch-node-layer l-store">
             <span class="layer-dot"></span>
             <span class="layer-name">Storage</span>
-            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">LiteDB + WAL</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">LiteDB + WAL + Blob store</span>
           </div>
-          <div class="arch-node-storage">
+
+          <!-- Arrow: Storage → Disk -->
+          <div class="layer-arrow">
+            <span class="layer-arrow-label">persists to disk</span>
+          </div>
+
+          <!-- Disk files -->
+          <div class="arch-node-storage" style="justify-content:center;">
             <span class="storage-chip">confman.db</span>
             <span class="storage-chip">WAL/</span>
             <span class="storage-chip">blobs/</span>
+            <span class="storage-chip">snapshots/</span>
           </div>
         </div>
 
-        <!-- Arrows between Node 1 and Node 2 -->
-        <div class="arch-arrow-group">
-          <span class="arch-arrow">AppendEntries</span>
-          <div class="arch-arrow-line raft-line"></div>
-          <div class="arch-arrow-line raft-line bidir" style="transform:scaleX(-1);"></div>
-          <span class="arch-arrow">Vote / ACK</span>
+        <!-- Right side: simplified 3-node cluster view -->
+        <div style="flex:1; min-width:280px; display:flex; flex-direction:column; gap:16px;">
+          <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">Cluster Topology</div>
+
+          <!-- Mini node 1 -->
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="flex:1; padding:12px 16px; background:var(--bg-card); border:2px solid var(--cyan); border-radius:10px; box-shadow:0 0 16px rgba(34,211,238,0.1);">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-family:var(--mono); font-size:13px; font-weight:700; color:var(--cyan);">Node 1 <span style="font-weight:400; color:var(--text-muted);">:6100</span></span>
+                <span style="font-family:var(--mono); font-size:9px; padding:2px 8px; border-radius:4px; background:rgba(34,211,238,0.15); color:var(--cyan); text-transform:uppercase; letter-spacing:1px;">Leader</span>
+              </div>
+              <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Accepts writes &bull; replicates to followers</div>
+            </div>
+          </div>
+
+          <!-- Raft arrows down -->
+          <div style="display:flex; flex-direction:column; align-items:center; gap:0; margin:-6px 0;">
+            <div style="width:2px; height:12px; background:var(--amber);"></div>
+            <span style="font-family:var(--mono); font-size:9px; color:var(--amber); padding:2px 8px; background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.15); border-radius:4px;">AppendEntries (HTTP/2)</span>
+            <div style="width:2px; height:12px; background:var(--amber);"></div>
+          </div>
+
+          <!-- Mini node 2 -->
+          <div style="padding:12px 16px; background:var(--bg-card); border:2px solid var(--border); border-radius:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-family:var(--mono); font-size:13px; font-weight:700; color:var(--text);">Node 2 <span style="font-weight:400; color:var(--text-muted);">:6200</span></span>
+              <span style="font-family:var(--mono); font-size:9px; padding:2px 8px; border-radius:4px; background:rgba(100,116,139,0.2); color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">Follower</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Serves reads &bull; 307 redirects writes to leader</div>
+          </div>
+
+          <!-- Raft arrows down -->
+          <div style="display:flex; flex-direction:column; align-items:center; gap:0; margin:-6px 0;">
+            <div style="width:2px; height:12px; background:var(--amber);"></div>
+            <span style="font-family:var(--mono); font-size:9px; color:var(--amber); padding:2px 8px; background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.15); border-radius:4px;">AppendEntries (HTTP/2)</span>
+            <div style="width:2px; height:12px; background:var(--amber);"></div>
+          </div>
+
+          <!-- Mini node 3 -->
+          <div style="padding:12px 16px; background:var(--bg-card); border:2px solid var(--border); border-radius:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-family:var(--mono); font-size:13px; font-weight:700; color:var(--text);">Node 3 <span style="font-weight:400; color:var(--text-muted);">:6300</span></span>
+              <span style="font-family:var(--mono); font-size:9px; padding:2px 8px; border-radius:4px; background:rgba(100,116,139,0.2); color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">Follower</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Serves reads &bull; 307 redirects writes to leader</div>
+          </div>
+
+          <!-- Quorum note -->
+          <div style="padding:8px 14px; background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.15); border-radius:8px; font-size:11px; color:var(--text-muted); text-align:center;">
+            Quorum = <strong style="color:var(--green);">2 of 3</strong> nodes must ACK before a write is committed
+          </div>
         </div>
 
-        <!-- Node 2 (Follower) -->
-        <div class="arch-node">
-          <div class="arch-node-header">
-            <span class="arch-node-name">Node 2 <span class="dim" style="font-weight:400;">:6200</span></span>
-            <span class="arch-node-role">Follower</span>
-          </div>
-          <div class="arch-node-layer l-api">
-            <span class="layer-dot"></span>
-            <span class="layer-name">REST API</span>
-            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Controllers</span>
-          </div>
-          <div class="arch-node-layer l-mw">
-            <span class="layer-dot"></span>
-            <span class="layer-name">Middleware</span>
-            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Auth + ReadBarrier</span>
-          </div>
-          <div class="arch-node-layer l-raft">
-            <span class="layer-dot"></span>
-            <span class="layer-name">Raft Consensus</span>
-            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Replication</span>
-          </div>
-          <div class="arch-node-layer l-store">
-            <span class="layer-dot"></span>
-            <span class="layer-name">Storage</span>
-            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">LiteDB + WAL</span>
-          </div>
-          <div class="arch-node-storage">
-            <span class="storage-chip">confman.db</span>
-            <span class="storage-chip">WAL/</span>
-            <span class="storage-chip">blobs/</span>
-          </div>
-        </div>
-
-        <!-- Arrows between Node 2 and Node 3 -->
-        <div class="arch-arrow-group">
-          <span class="arch-arrow">AppendEntries</span>
-          <div class="arch-arrow-line raft-line"></div>
-          <div class="arch-arrow-line raft-line bidir" style="transform:scaleX(-1);"></div>
-          <span class="arch-arrow">Vote / ACK</span>
-        </div>
-
-        <!-- Node 3 (Follower) -->
-        <div class="arch-node">
-          <div class="arch-node-header">
-            <span class="arch-node-name">Node 3 <span class="dim" style="font-weight:400;">:6300</span></span>
-            <span class="arch-node-role">Follower</span>
-          </div>
-          <div class="arch-node-layer l-api">
-            <span class="layer-dot"></span>
-            <span class="layer-name">REST API</span>
-            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Controllers</span>
-          </div>
-          <div class="arch-node-layer l-mw">
-            <span class="layer-dot"></span>
-            <span class="layer-name">Middleware</span>
-            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Auth + ReadBarrier</span>
-          </div>
-          <div class="arch-node-layer l-raft">
-            <span class="layer-dot"></span>
-            <span class="layer-name">Raft Consensus</span>
-            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Replication</span>
-          </div>
-          <div class="arch-node-layer l-store">
-            <span class="layer-dot"></span>
-            <span class="layer-name">Storage</span>
-            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">LiteDB + WAL</span>
-          </div>
-          <div class="arch-node-storage">
-            <span class="storage-chip">confman.db</span>
-            <span class="storage-chip">WAL/</span>
-            <span class="storage-chip">blobs/</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Legend -->
-      <div style="display:flex; gap:20px; justify-content:center; flex-wrap:wrap; margin-top:8px;">
-        <div style="display:flex; align-items:center; gap:6px; font-size:11px; font-family:var(--mono);">
-          <span style="width:8px;height:8px;border-radius:50%;background:var(--cyan);"></span>
-          <span style="color:var(--cyan);">REST API</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:6px; font-size:11px; font-family:var(--mono);">
-          <span style="width:8px;height:8px;border-radius:50%;background:var(--green);"></span>
-          <span style="color:var(--green);">Middleware</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:6px; font-size:11px; font-family:var(--mono);">
-          <span style="width:8px;height:8px;border-radius:50%;background:var(--amber);"></span>
-          <span style="color:var(--amber);">Raft Consensus</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:6px; font-size:11px; font-family:var(--mono);">
-          <span style="width:8px;height:8px;border-radius:50%;background:var(--pink);"></span>
-          <span style="color:var(--pink);">Storage</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:6px; font-size:11px; font-family:var(--mono);">
-          <span style="width:16px;height:2px;background:var(--amber);"></span>
-          <span style="color:var(--amber);">Raft RPC (HTTP/2)</span>
-        </div>
       </div>
     </div>
   </div>
 
-  <!-- Slide 6: Raft in Action -->
-  <div class="slide" data-slide="5">
+  <!-- Slide 11: Raft in Action -->
+  <div class="slide" data-slide="10">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--amber); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Raft In Action</div>
       <h2>Write &amp; Read Flows</h2>
@@ -1096,40 +1334,8 @@
     </div>
   </div>
 
-  <!-- Slide 7: Design First -->
-  <div class="slide" data-slide="6">
-    <div class="slide-inner stagger">
-      <div style="font-family:var(--mono); font-size:12px; color:var(--amber); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">January 23</div>
-      <h2>Design First, Code Second</h2>
-      <p style="margin-bottom:20px;">Four brainstorm documents before a single line of code:</p>
-      <div class="cards cards-2">
-        <div class="card" style="border-top: 3px solid var(--cyan);">
-          <h3 class="accent">System Architecture</h3>
-          <p>Single Raft cluster. All nodes identical. Reject sharding and read replicas.</p>
-        </div>
-        <div class="card" style="border-top: 3px solid var(--green);">
-          <h3 class="green">Data Model</h3>
-          <p>Hierarchical namespaces, cascading RBAC, immutable version history.</p>
-        </div>
-        <div class="card" style="border-top: 3px solid var(--amber);">
-          <h3 class="amber">API Design</h3>
-          <p>REST with URL versioning, RFC 7807 errors, cursor-based pagination.</p>
-        </div>
-        <div class="card" style="border-top: 3px solid var(--pink);">
-          <h3 class="pink">Publishing Workflow</h3>
-          <p>Four-eyes governance principle with configurable approvals (v2 feature).</p>
-        </div>
-      </div>
-      <div style="margin-top:24px; text-align:center; padding:16px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px;">
-        <span style="color:var(--text-muted); font-size:14px;">Then the entire initial implementation landed as</span>
-        <span style="color:var(--cyan); font-family:var(--mono); font-size:16px; font-weight:700;"> ONE commit</span>
-        <span style="color:var(--text-muted); font-size:14px;"> &mdash; PR #1</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Slide 8: Making It Work -->
-  <div class="slide" data-slide="7">
+  <!-- Slide 12: Making It Work -->
+  <div class="slide" data-slide="11">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--red); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">January 24&ndash;30</div>
       <h2>The Distributed Systems Reckoning</h2>
@@ -1154,8 +1360,8 @@
     </div>
   </div>
 
-  <!-- Slide 9: Making It Correct -->
-  <div class="slide" data-slide="8">
+  <!-- Slide 13: Making It Correct -->
+  <div class="slide" data-slide="12">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--green); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 1&ndash;2</div>
       <h2>Making It Correct</h2>
@@ -1193,8 +1399,8 @@
     </div>
   </div>
 
-  <!-- Slide 10: Measure First -->
-  <div class="slide" data-slide="9">
+  <!-- Slide 14: Measure First -->
+  <div class="slide" data-slide="13">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--purple); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 3</div>
       <h2>Measure Before You Optimize</h2>
@@ -1225,8 +1431,8 @@
     </div>
   </div>
 
-  <!-- Slide 11: Performance Sprint -->
-  <div class="slide" data-slide="10">
+  <!-- Slide 15: Performance Sprint -->
+  <div class="slide" data-slide="14">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--cyan); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 5&ndash;10</div>
       <h2>The Performance Sprint</h2>
@@ -1268,8 +1474,8 @@
     </div>
   </div>
 
-  <!-- Slide 12: Memory Crisis -->
-  <div class="slide" data-slide="11">
+  <!-- Slide 16: Memory Crisis -->
+  <div class="slide" data-slide="15">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--red); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 8&ndash;11</div>
       <h2>The Memory Crisis</h2>
@@ -1314,8 +1520,8 @@
     </div>
   </div>
 
-  <!-- Slide 13: Blob Store -->
-  <div class="slide" data-slide="12">
+  <!-- Slide 17: Blob Store -->
+  <div class="slide" data-slide="16">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--green); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 12&ndash;13</div>
       <h2>The Architectural Leap</h2>
@@ -1350,8 +1556,8 @@
     </div>
   </div>
 
-  <!-- Slide 14: Timeline -->
-  <div class="slide" data-slide="13">
+  <!-- Slide 18: Timeline -->
+  <div class="slide" data-slide="17">
     <div class="slide-inner stagger">
       <h2 style="text-align:center; margin-bottom:24px;">Project Timeline</h2>
       <div class="timeline" id="timeline">
@@ -1407,8 +1613,192 @@
     </div>
   </div>
 
-  <!-- Slide 15: Key Takeaways -->
-  <div class="slide" data-slide="14">
+  <!-- Slide 19: Commit & PR History -->
+  <div class="slide" data-slide="18">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--purple); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Project History</div>
+      <h2>Commits &amp; Pull Requests</h2>
+      <p style="margin-bottom:14px;"><strong style="color:var(--text);">56 commits</strong> across <strong style="color:var(--text);">10 merged PRs</strong> over <strong style="color:var(--text);">22 days</strong> of active development.</p>
+
+      <div style="display:flex; gap:28px; width:100%; max-width:1000px; flex-wrap:wrap; align-items:flex-start;">
+
+        <!-- Left: PR timeline -->
+        <div style="flex:1; min-width:340px;">
+          <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Pull Requests (merged)</div>
+
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <!-- PR #1 -->
+            <div style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--cyan);">
+              <span style="font-family:var(--mono); font-size:11px; color:var(--cyan); min-width:40px; font-weight:700;">#1</span>
+              <span style="font-size:11px; color:var(--text); flex:1;">Initial implementation</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--green);">+2,549</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">Jan 23</span>
+            </div>
+            <!-- PR #4 -->
+            <div style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--red);">
+              <span style="font-family:var(--mono); font-size:11px; color:var(--red); min-width:40px; font-weight:700;">#4</span>
+              <span style="font-size:11px; color:var(--text); flex:1;">Audit replication + snapshots</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--green);">+1,617</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">Jan 30</span>
+            </div>
+            <!-- PR #5 -->
+            <div style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--green);">
+              <span style="font-family:var(--mono); font-size:11px; color:var(--green); min-width:40px; font-weight:700;">#5</span>
+              <span style="font-size:11px; color:var(--text); flex:1;">ReadBarrier for linearizable reads</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--green);">+728</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">Feb 1</span>
+            </div>
+            <!-- PR #8 -->
+            <div style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--purple);">
+              <span style="font-family:var(--mono); font-size:11px; color:var(--purple); min-width:40px; font-weight:700;">#8</span>
+              <span style="font-size:11px; color:var(--text); flex:1;">Strongly-typed AuditAction</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--green);">+411</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">Feb 2</span>
+            </div>
+            <!-- PR #9 -->
+            <div style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--amber);">
+              <span style="font-family:var(--mono); font-size:11px; color:var(--amber); min-width:40px; font-weight:700;">#9</span>
+              <span style="font-size:11px; color:var(--text); flex:1;">Locust benchmark suite</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--green);">+1,819</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">Feb 3</span>
+            </div>
+            <!-- PR #12 -->
+            <div style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--amber);">
+              <span style="font-family:var(--mono); font-size:11px; color:var(--amber); min-width:40px; font-weight:700;">#12</span>
+              <span style="font-size:11px; color:var(--text); flex:1;">Perf Tier 1 &mdash; quick wins</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--green);">+470</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">Feb 5</span>
+            </div>
+            <!-- PR #13 -->
+            <div style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--amber);">
+              <span style="font-family:var(--mono); font-size:11px; color:var(--amber); min-width:40px; font-weight:700;">#13</span>
+              <span style="font-size:11px; color:var(--text); flex:1;">Perf Tier 2 &mdash; eliminate waste</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--green);">+685</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">Feb 5</span>
+            </div>
+            <!-- PR #14 -->
+            <div style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--amber);">
+              <span style="font-family:var(--mono); font-size:11px; color:var(--amber); min-width:40px; font-weight:700;">#14</span>
+              <span style="font-size:11px; color:var(--text); flex:1;">Perf Tier 3 &mdash; write batching (3.6x)</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--green);">+2,048</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">Feb 9</span>
+            </div>
+            <!-- PR #15 -->
+            <div style="display:flex; align-items:center; gap:10px; padding:7px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--cyan);">
+              <span style="font-family:var(--mono); font-size:11px; color:var(--cyan); min-width:40px; font-weight:700;">#15</span>
+              <span style="font-size:11px; color:var(--text); flex:1;">Content-addressed blob store</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--green);">+5,945</span>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">Feb 13</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: commit activity heatmap + stats -->
+        <div style="flex:0 0 280px; display:flex; flex-direction:column; gap:14px;">
+          <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">Daily Commit Activity</div>
+
+          <!-- Commit heatmap bars -->
+          <div style="display:flex; flex-direction:column; gap:3px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted); min-width:46px;">Jan 23</span>
+              <div style="height:14px; border-radius:3px; background:var(--cyan); width:44px;"></div>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">4</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted); min-width:46px;">Jan 24</span>
+              <div style="height:14px; border-radius:3px; background:var(--cyan); width:100px;"></div>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">9</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted); min-width:46px;">Jan 25</span>
+              <div style="height:14px; border-radius:3px; background:var(--cyan); width:44px;"></div>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">4</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted); min-width:46px;">Jan 30</span>
+              <div style="height:14px; border-radius:3px; background:var(--red); width:22px;"></div>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">2</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted); min-width:46px;">Feb 1</span>
+              <div style="height:14px; border-radius:3px; background:var(--green); width:67px;"></div>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">6</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted); min-width:46px;">Feb 2</span>
+              <div style="height:14px; border-radius:3px; background:var(--green); width:33px;"></div>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">3</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted); min-width:46px;">Feb 3</span>
+              <div style="height:14px; border-radius:3px; background:var(--amber); width:89px;"></div>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">8</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted); min-width:46px;">Feb 5</span>
+              <div style="height:14px; border-radius:3px; background:var(--amber); width:89px;"></div>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">8</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted); min-width:46px;">Feb 6</span>
+              <div style="height:14px; border-radius:3px; background:var(--amber); width:22px;"></div>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">2</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted); min-width:46px;">Feb 10</span>
+              <div style="height:14px; border-radius:3px; background:var(--pink); width:44px;"></div>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">4</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted); min-width:46px;">Feb 11</span>
+              <div style="height:14px; border-radius:3px; background:var(--pink); width:11px;"></div>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">1</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted); min-width:46px;">Feb 13</span>
+              <div style="height:14px; border-radius:3px; background:var(--cyan); width:11px;"></div>
+              <span style="font-family:var(--mono); font-size:9px; color:var(--text-muted);">1</span>
+            </div>
+          </div>
+
+          <!-- Color legend for phases -->
+          <div style="display:flex; flex-direction:column; gap:4px; padding:10px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px;">
+            <div style="font-family:var(--mono); font-size:9px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:2px;">Phase Legend</div>
+            <div style="display:flex; align-items:center; gap:8px; font-size:10px;">
+              <span style="width:10px; height:10px; border-radius:2px; background:var(--cyan); flex-shrink:0;"></span>
+              <span style="color:var(--text-dim);">Foundation &amp; architecture</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; font-size:10px;">
+              <span style="width:10px; height:10px; border-radius:2px; background:var(--red); flex-shrink:0;"></span>
+              <span style="color:var(--text-dim);">Bug fixes</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; font-size:10px;">
+              <span style="width:10px; height:10px; border-radius:2px; background:var(--green); flex-shrink:0;"></span>
+              <span style="color:var(--text-dim);">Correctness &amp; consistency</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; font-size:10px;">
+              <span style="width:10px; height:10px; border-radius:2px; background:var(--amber); flex-shrink:0;"></span>
+              <span style="color:var(--text-dim);">Performance optimization</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; font-size:10px;">
+              <span style="width:10px; height:10px; border-radius:2px; background:var(--pink); flex-shrink:0;"></span>
+              <span style="color:var(--text-dim);">Memory &amp; stability</span>
+            </div>
+          </div>
+
+          <!-- Total lines stat -->
+          <div style="padding:10px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; text-align:center;">
+            <div style="font-family:var(--mono); font-size:24px; font-weight:700; color:var(--green);">+16,725</div>
+            <div style="font-size:10px; color:var(--text-muted);">lines added across all PRs</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 20: Key Takeaways -->
+  <div class="slide" data-slide="19">
     <div class="slide-inner stagger">
       <h2 style="text-align:center; margin-bottom:24px;">Key Takeaways</h2>
       <ol class="takeaways">
@@ -1428,13 +1818,261 @@
     </div>
   </div>
 
+  <!-- Slide 21: Fractal Agent Usage -->
+  <div class="slide" data-slide="20">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--cyan); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Meta-Lesson</div>
+      <h2>Use the Agent <span style="color:var(--cyan);">Fractally</span></h2>
+      <p style="margin-bottom:16px;">The same agent works at <strong style="color:var(--text);">every level of abstraction</strong> &mdash; from system design down to binary debugging, and across every workflow step.</p>
+
+      <div style="display:flex; gap:28px; width:100%; max-width:1000px; flex-wrap:wrap; align-items:flex-start;">
+
+        <!-- Left: abstraction layers -->
+        <div style="flex:1; min-width:340px;">
+          <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Up &amp; Down the Abstraction Stack</div>
+
+          <div style="display:flex; flex-direction:column; gap:0;">
+            <!-- Layer 5: Architecture -->
+            <div style="display:flex; align-items:stretch; gap:0;">
+              <div style="width:36px; display:flex; flex-direction:column; align-items:center; padding-top:14px;">
+                <span style="font-family:var(--mono); font-size:16px; font-weight:700; color:var(--purple);">5</span>
+              </div>
+              <div style="flex:1; padding:10px 16px; background:rgba(168,85,247,0.06); border:1px solid rgba(168,85,247,0.15); border-radius:8px 8px 0 0; border-bottom:none;">
+                <strong style="color:var(--purple); font-size:13px;">Architecture &amp; Design</strong>
+                <p style="font-size:11px; color:var(--text-dim); margin:3px 0 0;">Brainstorm features, plan implementations, define module boundaries, generate backlogs</p>
+              </div>
+            </div>
+            <!-- Connector -->
+            <div style="display:flex; align-items:center; gap:0;">
+              <div style="width:36px; display:flex; justify-content:center;"><div style="width:1px; height:6px; background:var(--border);"></div></div>
+              <div style="flex:1; height:6px;"></div>
+            </div>
+            <!-- Layer 4: Research -->
+            <div style="display:flex; align-items:stretch; gap:0;">
+              <div style="width:36px; display:flex; flex-direction:column; align-items:center; padding-top:14px;">
+                <span style="font-family:var(--mono); font-size:16px; font-weight:700; color:var(--cyan);">4</span>
+              </div>
+              <div style="flex:1; padding:10px 16px; background:rgba(34,211,238,0.06); border:1px solid rgba(34,211,238,0.15);">
+                <strong style="color:var(--cyan); font-size:13px;">Research &amp; Clarification</strong>
+                <p style="font-size:11px; color:var(--text-dim); margin:3px 0 0;">Unsure about a concept? Spawn a background agent to research it while you keep working</p>
+              </div>
+            </div>
+            <!-- Connector -->
+            <div style="display:flex; align-items:center; gap:0;">
+              <div style="width:36px; display:flex; justify-content:center;"><div style="width:1px; height:6px; background:var(--border);"></div></div>
+              <div style="flex:1; height:6px;"></div>
+            </div>
+            <!-- Layer 3: Implementation -->
+            <div style="display:flex; align-items:stretch; gap:0;">
+              <div style="width:36px; display:flex; flex-direction:column; align-items:center; padding-top:14px;">
+                <span style="font-family:var(--mono); font-size:16px; font-weight:700; color:var(--green);">3</span>
+              </div>
+              <div style="flex:1; padding:10px 16px; background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.15);">
+                <strong style="color:var(--green); font-size:13px;">Implementation &amp; Code</strong>
+                <p style="font-size:11px; color:var(--text-dim); margin:3px 0 0;">Write features, fix bugs, refactor &mdash; the layer most people start (and stop) at</p>
+              </div>
+            </div>
+            <!-- Connector -->
+            <div style="display:flex; align-items:center; gap:0;">
+              <div style="width:36px; display:flex; justify-content:center;"><div style="width:1px; height:6px; background:var(--border);"></div></div>
+              <div style="flex:1; height:6px;"></div>
+            </div>
+            <!-- Layer 2: Debugging -->
+            <div style="display:flex; align-items:stretch; gap:0;">
+              <div style="width:36px; display:flex; flex-direction:column; align-items:center; padding-top:14px;">
+                <span style="font-family:var(--mono); font-size:16px; font-weight:700; color:var(--amber);">2</span>
+              </div>
+              <div style="flex:1; padding:10px 16px; background:rgba(251,191,36,0.06); border:1px solid rgba(251,191,36,0.15);">
+                <strong style="color:var(--amber); font-size:13px;">Debugging &amp; Diagnostics</strong>
+                <p style="font-size:11px; color:var(--text-dim); margin:3px 0 0;">Create custom tools to decode logs, parse binary WAL files, visualize cluster state</p>
+              </div>
+            </div>
+            <!-- Connector -->
+            <div style="display:flex; align-items:center; gap:0;">
+              <div style="width:36px; display:flex; justify-content:center;"><div style="width:1px; height:6px; background:var(--border);"></div></div>
+              <div style="flex:1; height:6px;"></div>
+            </div>
+            <!-- Layer 1: Workflow -->
+            <div style="display:flex; align-items:stretch; gap:0;">
+              <div style="width:36px; display:flex; flex-direction:column; align-items:center; padding-top:14px;">
+                <span style="font-family:var(--mono); font-size:16px; font-weight:700; color:var(--pink);">1</span>
+              </div>
+              <div style="flex:1; padding:10px 16px; background:rgba(244,114,182,0.06); border:1px solid rgba(244,114,182,0.15); border-radius:0 0 8px 8px;">
+                <strong style="color:var(--pink); font-size:13px;">Workflow Automation</strong>
+                <p style="font-size:11px; color:var(--text-dim); margin:3px 0 0;">Doing something repetitive? Ask the agent to create a skill, hook, or script for next time</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fractal arrow -->
+          <div style="margin-top:8px; text-align:center; font-family:var(--mono); font-size:11px; color:var(--text-muted);">
+            <span style="color:var(--cyan);">&uarr;</span> same agent, same session, any direction <span style="color:var(--cyan);">&darr;</span>
+          </div>
+        </div>
+
+        <!-- Right: concrete examples from this project -->
+        <div style="flex:0 0 300px; display:flex; flex-direction:column; gap:10px;">
+          <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">How We Used It on Confman</div>
+
+          <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; font-size:11px;">
+            <div style="color:var(--purple); font-family:var(--mono); font-size:10px; margin-bottom:4px;">LEVEL 5</div>
+            <span style="color:var(--text-dim);">Brainstormed 4 design docs in one day. Claude asked questions we hadn&rsquo;t considered &mdash; like &ldquo;what happens to orphan children on parent deletion?&rdquo;</span>
+          </div>
+
+          <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; font-size:11px;">
+            <div style="color:var(--cyan); font-family:var(--mono); font-size:10px; margin-bottom:4px;">LEVEL 4</div>
+            <span style="color:var(--text-dim);">Spawned background agents to research DotNext WAL internals, ARM64 memory alignment, and .NET GC modes while continuing to write code.</span>
+          </div>
+
+          <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; font-size:11px;">
+            <div style="color:var(--green); font-family:var(--mono); font-size:10px; margin-bottom:4px;">LEVEL 3</div>
+            <span style="color:var(--text-dim);">Implemented the blob store (PR #15, +5,945 lines) &mdash; 6-phase plan executed across multiple sessions against a structured spec.</span>
+          </div>
+
+          <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; font-size:11px;">
+            <div style="color:var(--amber); font-family:var(--mono); font-size:10px; margin-bottom:4px;">LEVEL 2</div>
+            <span style="color:var(--text-dim);">Asked Claude to write Locust benchmarks, parse results, and formulate hypotheses &mdash; surfaced WAL null-byte corruption and the PrivateMemory memory leak.</span>
+          </div>
+
+          <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; font-size:11px;">
+            <div style="color:var(--pink); font-family:var(--mono); font-size:10px; margin-bottom:4px;">LEVEL 1</div>
+            <span style="color:var(--text-dim);">Created <code style="font-size:10px;">/run-cluster</code>, <code style="font-size:10px;">/benchmark</code>, <code style="font-size:10px;">/commit</code>, and <code style="font-size:10px;">/debug-cluster</code> skills &mdash; each saved minutes per invocation across dozens of sessions.</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 22: Claude Code Insights -->
+  <div class="slide" data-slide="21">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--purple); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Meta-Lesson</div>
+      <h2>Building <em style="color:var(--cyan);">with</em> AI Agents</h2>
+      <p style="margin-bottom:14px;">What we learned about developing alongside Claude Code &mdash; practices that compounded across every session.</p>
+
+      <div style="display:flex; gap:16px; width:100%; max-width:1000px; flex-wrap:wrap;">
+
+        <!-- Left column: 3 big insights -->
+        <div style="flex:1; min-width:320px; display:flex; flex-direction:column; gap:10px;">
+
+          <!-- 1. Specification Engineering -->
+          <div style="padding:14px 18px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; border-left:3px solid var(--cyan);">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+              <span style="font-family:var(--mono); font-size:18px; font-weight:700; color:var(--cyan);">1</span>
+              <strong style="font-size:14px; color:var(--text);">Specification Engineering</strong>
+            </div>
+            <p style="font-size:12px; color:var(--text-dim); line-height:1.5; margin:0;">
+              Specs are the steering wheel. Brainstorming creates them, plans structure them, agents execute against them.
+              The <strong style="color:var(--text);">quality ceiling is set by the spec</strong>, not the model.
+              Not &ldquo;build app X&rdquo; &mdash; but complete descriptions of modules, interfaces, tradeoffs, and acceptance criteria.
+            </p>
+          </div>
+
+          <!-- 2. Deep Modularity -->
+          <div style="padding:14px 18px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; border-left:3px solid var(--green);">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+              <span style="font-family:var(--mono); font-size:18px; font-weight:700; color:var(--green);">2</span>
+              <strong style="font-size:14px; color:var(--text);">Deep Modularity for Agents</strong>
+            </div>
+            <p style="font-size:12px; color:var(--text-dim); line-height:1.5; margin:0;">
+              Agents start from zero each session. Design for <strong style="color:var(--text);">progressive disclosure</strong>:
+              file layout mirrors architecture, MODULE.md describes each interface,
+              module tests enforce boundaries. Make the codebase <em>navigable by default</em>.
+            </p>
+          </div>
+
+          <!-- 3. Tight Feedback Loops -->
+          <div style="padding:14px 18px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; border-left:3px solid var(--amber);">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+              <span style="font-family:var(--mono); font-size:18px; font-weight:700; color:var(--amber);">3</span>
+              <strong style="font-size:14px; color:var(--text);">Tight Feedback Loops</strong>
+            </div>
+            <p style="font-size:12px; color:var(--text-dim); line-height:1.5; margin:0;">
+              Tests and benchmarks are force multipliers. They let the agent <strong style="color:var(--text);">self-verify</strong>,
+              surface surprising bugs, and build confidence. The benchmark suite found a WAL corruption bug
+              and the memory crisis &mdash; both invisible without measurement.
+            </p>
+          </div>
+
+        </div>
+
+        <!-- Right column: 2 more insights + the key frame -->
+        <div style="flex:1; min-width:320px; display:flex; flex-direction:column; gap:10px;">
+
+          <!-- 4. Meta-Tooling -->
+          <div style="padding:14px 18px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; border-left:3px solid var(--pink);">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+              <span style="font-family:var(--mono); font-size:18px; font-weight:700; color:var(--pink);">4</span>
+              <strong style="font-size:14px; color:var(--text);">Meta-Tooling Compounds</strong>
+            </div>
+            <p style="font-size:12px; color:var(--text-dim); line-height:1.5; margin:0;">
+              Claude extends itself: skills, hooks, debug tools, benchmark scripts, visualizers.
+              Each tool <strong style="color:var(--text);">compounds across future sessions</strong>.
+              Use Claude fractally &mdash; architecture design, code, debugging, workflow automation, even this presentation.
+            </p>
+          </div>
+
+          <!-- 5. Infrastructure > Model -->
+          <div style="padding:14px 18px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; border-left:3px solid var(--purple);">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+              <span style="font-family:var(--mono); font-size:18px; font-weight:700; color:var(--purple);">5</span>
+              <strong style="font-size:14px; color:var(--text);">Infrastructure &gt; Model</strong>
+            </div>
+            <p style="font-size:12px; color:var(--text-dim); line-height:1.5; margin:0;">
+              The model is just the inference core. Real capability comes from <strong style="color:var(--text);">surrounding infrastructure</strong>:
+              memory, skills, task planning, inter-agent communication, self-verification loops.
+              Early progress was slow not because the model was incapable, but because the <em>environment was underspecified</em>.
+            </p>
+          </div>
+
+          <!-- The hierarchy -->
+          <div style="padding:14px 18px; background:rgba(34,211,238,0.04); border:1px solid rgba(34,211,238,0.15); border-radius:10px;">
+            <div style="font-family:var(--mono); font-size:9px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">The Engineering Hierarchy</div>
+            <div style="display:flex; flex-direction:column; gap:4px; font-family:var(--mono); font-size:12px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="color:var(--purple); min-width:14px; text-align:center;">4</span>
+                <span style="flex:1; padding:5px 10px; background:rgba(168,85,247,0.1); border:1px solid rgba(168,85,247,0.2); border-radius:4px; color:var(--purple);">Intent Engineering</span>
+                <span style="font-size:9px; color:var(--text-muted);">goals &amp; values</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="color:var(--cyan); min-width:14px; text-align:center;">3</span>
+                <span style="flex:1; padding:5px 10px; background:rgba(34,211,238,0.08); border:1px solid rgba(34,211,238,0.15); border-radius:4px; color:var(--cyan);">Specification Engineering</span>
+                <span style="font-size:9px; color:var(--text-muted);">what to build</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="color:var(--green); min-width:14px; text-align:center;">2</span>
+                <span style="flex:1; padding:5px 10px; background:rgba(52,211,153,0.08); border:1px solid rgba(52,211,153,0.15); border-radius:4px; color:var(--green);">Context Engineering</span>
+                <span style="font-size:9px; color:var(--text-muted);">what the agent sees</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="color:var(--amber); min-width:14px; text-align:center;">1</span>
+                <span style="flex:1; padding:5px 10px; background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.15); border-radius:4px; color:var(--amber);">Prompt Craft</span>
+                <span style="font-size:9px; color:var(--text-muted);">how you ask</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Bottom quote -->
+      <div style="margin-top:12px; padding:10px 18px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; max-width:1000px; width:100%; text-align:center;">
+        <span style="font-size:13px; color:var(--text-dim); font-style:italic;">
+          &ldquo;More capable AI agents need not just a capable model, but the <strong style="color:var(--text);">infrastructure to harness and drive them</strong>.
+          The model is just the core inference module &mdash; connected and orchestrated by all the auxiliary systems.&rdquo;
+        </span>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- Navigation -->
 <div id="nav">
   <button id="prev" onclick="go(-1)">&#8592;</button>
   <div id="dots"></div>
-  <span id="counter">1 / 15</span>
+  <span id="counter">1 / 19</span>
   <button id="next" onclick="go(1)">&#8594;</button>
 </div>
 
