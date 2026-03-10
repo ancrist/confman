@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Confman: Building a Distributed Configuration Service</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0e1a;
+    --bg-card: #111827;
+    --bg-card-hover: #1a2236;
+    --cyan: #22d3ee;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --pink: #f472b6;
+    --purple: #a78bfa;
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --text-muted: #64748b;
+    --border: #1e293b;
+    --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+    --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+
+  html, body {
+    height: 100%; width: 100%;
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Progress bar */
+  #progress {
+    position: fixed; top: 0; left: 0; height: 3px; z-index: 100;
+    background: linear-gradient(90deg, var(--cyan), var(--green));
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 12px var(--cyan);
+  }
+
+  /* Slide container */
+  #deck {
+    width: 100%; height: 100%;
+    position: relative;
+  }
+
+  .slide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    padding: 60px 80px;
+    opacity: 0;
+    transform: translateX(40px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    pointer-events: none;
+    overflow-y: auto;
+  }
+
+  .slide.active {
+    opacity: 1; transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  .slide.exit-left {
+    opacity: 0; transform: translateX(-40px);
+  }
+
+  /* Navigation */
+  #nav {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 16px; z-index: 50;
+    background: rgba(17, 24, 39, 0.9);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 20px;
+  }
+
+  #nav button {
+    background: none; border: 1px solid var(--border);
+    color: var(--text-dim); width: 36px; height: 36px;
+    border-radius: 8px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; transition: all 0.2s;
+  }
+  #nav button:hover { border-color: var(--cyan); color: var(--cyan); }
+  #nav button:disabled { opacity: 0.3; cursor: default; }
+  #nav button:disabled:hover { border-color: var(--border); color: var(--text-dim); }
+
+  #counter {
+    font-family: var(--mono); font-size: 13px;
+    color: var(--text-muted); min-width: 60px; text-align: center;
+  }
+
+  /* Dot nav */
+  #dots { display: flex; gap: 6px; }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text-muted); cursor: pointer;
+    transition: all 0.3s;
+  }
+  .dot.active { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); transform: scale(1.3); }
+  .dot:hover { background: var(--text-dim); }
+
+  /* Typography */
+  h1 { font-size: clamp(28px, 4vw, 56px); font-weight: 700; line-height: 1.15; margin-bottom: 16px; }
+  h2 { font-size: clamp(22px, 3vw, 40px); font-weight: 700; line-height: 1.2; margin-bottom: 12px; }
+  h3 { font-size: clamp(16px, 2vw, 24px); font-weight: 600; line-height: 1.3; margin-bottom: 8px; }
+  p, li { font-size: clamp(14px, 1.3vw, 18px); line-height: 1.6; color: var(--text-dim); }
+  .subtitle { font-size: clamp(16px, 1.8vw, 24px); color: var(--text-dim); margin-bottom: 32px; }
+
+  code, .mono { font-family: var(--mono); }
+  .accent { color: var(--cyan); }
+  .green { color: var(--green); }
+  .amber { color: var(--amber); }
+  .red { color: var(--red); }
+  .pink { color: var(--pink); }
+  .purple { color: var(--purple); }
+  .dim { color: var(--text-muted); }
+
+  /* Stat boxes */
+  .stats { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; margin-top: 24px; }
+  .stat {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 28px; text-align: center;
+    min-width: 120px;
+  }
+  .stat .num { font-size: 32px; font-weight: 700; font-family: var(--mono); }
+  .stat .label { font-size: 13px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+
+  /* Cards grid */
+  .cards { display: grid; gap: 16px; width: 100%; max-width: 900px; }
+  .cards-2 { grid-template-columns: 1fr 1fr; }
+  .cards-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cards-4 { grid-template-columns: 1fr 1fr; }
+
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 24px;
+    transition: border-color 0.3s, transform 0.3s;
+  }
+  .card:hover { border-color: var(--cyan); transform: translateY(-2px); }
+  .card h3 { font-size: 15px; margin-bottom: 6px; }
+  .card p { font-size: 13px; line-height: 1.5; }
+
+  /* Bug list */
+  .bug-list { list-style: none; width: 100%; max-width: 850px; }
+  .bug-list li {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 20px; margin-bottom: 10px;
+    border-left: 3px solid var(--red);
+  }
+  .bug-list li strong { color: var(--text); }
+  .bug-list li .fix {
+    display: inline-block; margin-top: 6px; padding: 3px 10px;
+    background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.3);
+    border-radius: 6px; font-size: 12px; color: var(--green);
+    font-family: var(--mono);
+  }
+
+  /* Feature list */
+  .feature-list { list-style: none; width: 100%; max-width: 850px; }
+  .feature-list li {
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; gap: 12px; font-size: 15px;
+  }
+  .feature-list li:last-child { border-bottom: none; }
+  .feature-list .icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+
+  /* Tier boxes */
+  .tiers { display: flex; gap: 16px; width: 100%; max-width: 950px; flex-wrap: wrap; }
+  .tier {
+    flex: 1; min-width: 260px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .tier h3 { font-size: 15px; margin-bottom: 10px; }
+  .tier ul { list-style: none; }
+  .tier li { font-size: 13px; color: var(--text-dim); padding: 4px 0; padding-left: 16px; position: relative; }
+  .tier li::before { content: ''; position: absolute; left: 0; top: 12px; width: 6px; height: 6px; border-radius: 50%; }
+
+  .tier-1 { border-top: 3px solid var(--green); }
+  .tier-1 li::before { background: var(--green); }
+  .tier-2 { border-top: 3px solid var(--amber); }
+  .tier-2 li::before { background: var(--amber); }
+  .tier-3 { border-top: 3px solid var(--cyan); }
+  .tier-3 li::before { background: var(--cyan); }
+
+  /* Memory comparison */
+  .mem-compare { display: flex; gap: 24px; width: 100%; max-width: 700px; justify-content: center; margin: 16px 0; }
+  .mem-box {
+    flex: 1; text-align: center; padding: 24px; border-radius: 12px;
+    background: var(--bg-card); border: 1px solid var(--border);
+  }
+  .mem-box .val { font-size: 36px; font-weight: 700; font-family: var(--mono); }
+  .mem-box .lbl { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Bar chart */
+  .bar-chart { width: 100%; max-width: 700px; }
+  .bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .bar-label { width: 140px; font-size: 13px; color: var(--text-dim); text-align: right; flex-shrink: 0; }
+  .bar-track { flex: 1; height: 28px; background: var(--bg-card); border-radius: 6px; overflow: hidden; position: relative; }
+  .bar-fill {
+    height: 100%; border-radius: 6px;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex; align-items: center; padding-left: 10px;
+    font-size: 12px; font-family: var(--mono); color: var(--bg);
+    font-weight: 600;
+  }
+
+  /* Blob comparison */
+  .blob-compare { width: 100%; max-width: 800px; }
+  .blob-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .blob-row .scenario { width: 200px; font-size: 13px; color: var(--text-dim); text-align: right; flex-shrink: 0; }
+  .blob-row .arrow { color: var(--text-muted); font-size: 18px; flex-shrink: 0; }
+  .blob-val {
+    padding: 8px 16px; border-radius: 8px; font-family: var(--mono);
+    font-size: 14px; font-weight: 600; min-width: 100px; text-align: center;
+  }
+  .blob-before { background: rgba(248, 113, 113, 0.15); border: 1px solid rgba(248, 113, 113, 0.3); color: var(--red); }
+  .blob-after { background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); color: var(--green); }
+  .blob-reduction {
+    font-size: 12px; color: var(--cyan); font-family: var(--mono);
+    background: rgba(34, 211, 238, 0.1); padding: 4px 10px; border-radius: 6px;
+  }
+
+  /* Timeline */
+  .timeline { width: 100%; max-width: 850px; position: relative; padding-left: 30px; }
+  .timeline::before {
+    content: ''; position: absolute; left: 11px; top: 0; bottom: 0;
+    width: 2px; background: linear-gradient(180deg, var(--cyan), var(--green), var(--amber), var(--pink));
+  }
+  .tl-item { position: relative; padding: 0 0 20px 24px; }
+  .tl-dot {
+    position: absolute; left: -24px; top: 4px;
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid; background: var(--bg);
+  }
+  .tl-date { font-family: var(--mono); font-size: 12px; margin-bottom: 2px; }
+  .tl-title { font-size: 15px; font-weight: 600; color: var(--text); }
+  .tl-desc { font-size: 13px; color: var(--text-muted); }
+  .tl-commits {
+    display: inline-block; font-family: var(--mono); font-size: 11px;
+    padding: 2px 8px; border-radius: 4px; margin-left: 8px;
+    background: rgba(34, 211, 238, 0.1); color: var(--cyan);
+  }
+
+  /* Takeaway list */
+  .takeaways { list-style: none; width: 100%; max-width: 800px; counter-reset: tk; }
+  .takeaways li {
+    counter-increment: tk;
+    padding: 14px 20px 14px 56px;
+    position: relative;
+    margin-bottom: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 15px;
+    transition: border-color 0.3s, transform 0.3s;
+  }
+  .takeaways li:hover { border-color: var(--cyan); transform: translateX(4px); }
+  .takeaways li::before {
+    content: counter(tk);
+    position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--cyan), var(--green));
+    color: var(--bg); font-weight: 700; font-size: 14px; font-family: var(--mono);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .takeaways li strong { color: var(--text); }
+
+  /* Phase chips */
+  .phase-chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .phase-chip {
+    font-family: var(--mono); font-size: 11px; padding: 4px 10px;
+    border-radius: 6px; border: 1px solid;
+  }
+
+  /* Slide-specific */
+  .slide-inner { width: 100%; max-width: 960px; }
+
+  /* Pulsing indicator */
+  @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  .pulse { animation: pulse 2s ease-in-out infinite; }
+
+  @keyframes glow {
+    0%, 100% { box-shadow: 0 0 8px rgba(34, 211, 238, 0.3); }
+    50% { box-shadow: 0 0 20px rgba(34, 211, 238, 0.6); }
+  }
+
+  /* Stagger animation for children */
+  .slide.active .stagger > * {
+    animation: fadeUp 0.4s ease both;
+  }
+  .slide.active .stagger > *:nth-child(1) { animation-delay: 0.05s; }
+  .slide.active .stagger > *:nth-child(2) { animation-delay: 0.12s; }
+  .slide.active .stagger > *:nth-child(3) { animation-delay: 0.19s; }
+  .slide.active .stagger > *:nth-child(4) { animation-delay: 0.26s; }
+  .slide.active .stagger > *:nth-child(5) { animation-delay: 0.33s; }
+  .slide.active .stagger > *:nth-child(6) { animation-delay: 0.40s; }
+  .slide.active .stagger > *:nth-child(7) { animation-delay: 0.47s; }
+  .slide.active .stagger > *:nth-child(8) { animation-delay: 0.54s; }
+  .slide.active .stagger > *:nth-child(9) { animation-delay: 0.61s; }
+  .slide.active .stagger > *:nth-child(10) { animation-delay: 0.68s; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Raft cluster diagram */
+  .cluster-diagram {
+    display: flex; gap: 32px; justify-content: center; align-items: center;
+    margin: 20px 0;
+  }
+  .node-box {
+    width: 100px; height: 100px; border-radius: 16px;
+    background: var(--bg-card); border: 2px solid var(--border);
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; font-family: var(--mono); font-size: 13px;
+    position: relative; transition: border-color 0.5s;
+  }
+  .node-box.leader { border-color: var(--cyan); animation: glow 3s ease-in-out infinite; }
+  .node-box .role { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+  .node-box.leader .role { color: var(--cyan); }
+  .node-link {
+    width: 40px; height: 2px;
+    background: linear-gradient(90deg, var(--border), var(--cyan), var(--border));
+    position: relative;
+  }
+
+  /* Architecture diagram - Node internals */
+  .arch-cluster {
+    display: flex; gap: 24px; justify-content: center; align-items: flex-start;
+    width: 100%; max-width: 960px; margin: 12px 0;
+  }
+  .arch-node {
+    flex: 1; max-width: 280px; background: var(--bg-card);
+    border: 2px solid var(--border); border-radius: 16px;
+    padding: 16px; position: relative; overflow: hidden;
+    transition: border-color 0.4s, box-shadow 0.4s;
+  }
+  .arch-node.is-leader { border-color: var(--cyan); box-shadow: 0 0 20px rgba(34,211,238,0.15); }
+  .arch-node-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .arch-node-name { font-family: var(--mono); font-size: 14px; font-weight: 700; }
+  .arch-node-role {
+    font-family: var(--mono); font-size: 10px; padding: 2px 8px;
+    border-radius: 4px; text-transform: uppercase; letter-spacing: 1px;
+  }
+  .arch-node.is-leader .arch-node-role { background: rgba(34,211,238,0.15); color: var(--cyan); }
+  .arch-node:not(.is-leader) .arch-node-role { background: rgba(100,116,139,0.2); color: var(--text-muted); }
+
+  .arch-node-layer {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; margin-bottom: 4px;
+    border-radius: 6px; font-size: 11px; font-family: var(--mono);
+    border: 1px solid transparent;
+  }
+  .arch-node-layer .layer-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .arch-node-layer .layer-name { color: var(--text-dim); }
+  .arch-node-layer.l-api { background: rgba(34,211,238,0.06); border-color: rgba(34,211,238,0.15); }
+  .arch-node-layer.l-api .layer-dot { background: var(--cyan); }
+  .arch-node-layer.l-api .layer-name { color: var(--cyan); }
+  .arch-node-layer.l-mw { background: rgba(52,211,153,0.06); border-color: rgba(52,211,153,0.15); }
+  .arch-node-layer.l-mw .layer-dot { background: var(--green); }
+  .arch-node-layer.l-mw .layer-name { color: var(--green); }
+  .arch-node-layer.l-raft { background: rgba(251,191,36,0.06); border-color: rgba(251,191,36,0.15); }
+  .arch-node-layer.l-raft .layer-dot { background: var(--amber); }
+  .arch-node-layer.l-raft .layer-name { color: var(--amber); }
+  .arch-node-layer.l-store { background: rgba(244,114,182,0.06); border-color: rgba(244,114,182,0.15); }
+  .arch-node-layer.l-store .layer-dot { background: var(--pink); }
+  .arch-node-layer.l-store .layer-name { color: var(--pink); }
+
+  .arch-node-storage {
+    margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border);
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .arch-node-storage .storage-chip {
+    font-family: var(--mono); font-size: 10px; padding: 2px 8px;
+    border-radius: 4px; background: rgba(100,116,139,0.15); color: var(--text-muted);
+  }
+
+  .arch-arrow-group {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; min-width: 48px; padding-top: 40px;
+  }
+  .arch-arrow {
+    font-family: var(--mono); font-size: 10px; color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .arch-arrow-line {
+    width: 36px; height: 2px; position: relative;
+  }
+  .arch-arrow-line::after {
+    content: ''; position: absolute; right: -1px; top: -3px;
+    border: 4px solid transparent; border-left: 5px solid;
+  }
+  .arch-arrow-line.bidir::before {
+    content: ''; position: absolute; left: -1px; top: -3px;
+    border: 4px solid transparent; border-right: 5px solid;
+  }
+  .arch-arrow-line.raft-line { background: var(--amber); }
+  .arch-arrow-line.raft-line::after { border-left-color: var(--amber); }
+  .arch-arrow-line.raft-line.bidir::before { border-right-color: var(--amber); }
+
+  /* Sequence diagram for Raft flows */
+  .seq-diagram { width: 100%; max-width: 900px; position: relative; }
+  .seq-header {
+    display: flex; justify-content: space-around; margin-bottom: 0; position: relative; z-index: 2;
+  }
+  .seq-actor {
+    text-align: center; padding: 10px 16px;
+    background: var(--bg-card); border: 2px solid var(--border);
+    border-radius: 10px; font-family: var(--mono); font-size: 12px;
+    min-width: 90px; position: relative;
+  }
+  .seq-actor.actor-leader { border-color: var(--cyan); }
+  .seq-actor.actor-follower { border-color: var(--text-muted); }
+  .seq-actor.actor-client { border-color: var(--green); }
+  .seq-actor .seq-actor-sub { font-size: 9px; color: var(--text-muted); display: block; margin-top: 2px; }
+
+  .seq-lifelines {
+    position: relative; padding: 0 0 8px;
+  }
+  /* Vertical lifelines rendered via JS/inline */
+  .seq-msg {
+    display: flex; align-items: center; padding: 6px 0; position: relative;
+    min-height: 32px;
+  }
+  .seq-msg-line {
+    position: absolute; height: 2px; top: 50%;
+  }
+  .seq-msg-arrow {
+    position: absolute; top: calc(50% - 4px);
+    width: 0; height: 0; border: 5px solid transparent;
+  }
+  .seq-msg-label {
+    position: absolute; top: calc(50% - 18px);
+    font-family: var(--mono); font-size: 11px; white-space: nowrap;
+    padding: 2px 8px; border-radius: 4px;
+    background: var(--bg); color: var(--text-dim);
+  }
+  .seq-msg-label strong { color: var(--text); font-weight: 600; }
+  .seq-msg-note {
+    font-size: 10px; color: var(--text-muted); font-style: italic;
+    position: absolute; top: calc(50% + 6px);
+    font-family: var(--mono);
+  }
+
+  .seq-divider {
+    display: flex; align-items: center; gap: 12px; padding: 8px 0;
+    font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+  }
+  .seq-divider::before, .seq-divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* Simplified sequence rows */
+  .seq-rows { display: flex; flex-direction: column; gap: 0; }
+  .seq-row {
+    display: grid; align-items: center; min-height: 36px;
+    padding: 2px 0; position: relative;
+  }
+  .seq-row .seq-col {
+    display: flex; justify-content: center; align-items: center;
+    position: relative; min-height: 28px;
+  }
+  /* Vertical lifeline behind each column */
+  .seq-col::before {
+    content: ''; position: absolute; top: 0; bottom: 0;
+    width: 2px; background: var(--border); z-index: 0;
+  }
+  .seq-col.col-leader::before { background: rgba(34,211,238,0.3); }
+  .seq-col.col-f1::before, .seq-col.col-f2::before { background: rgba(100,116,139,0.3); }
+  .seq-col.col-client::before { background: rgba(52,211,153,0.3); }
+
+  .seq-arrow-row {
+    position: absolute; top: 50%; height: 2px; z-index: 1;
+  }
+  .seq-label {
+    position: relative; z-index: 2;
+    font-family: var(--mono); font-size: 11px; padding: 2px 8px;
+    border-radius: 4px; background: var(--bg); white-space: nowrap;
+  }
+  .seq-action-box {
+    position: relative; z-index: 2;
+    font-family: var(--mono); font-size: 10px; padding: 4px 10px;
+    border-radius: 6px; white-space: nowrap; text-align: center;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .slide { padding: 40px 24px 80px; }
+    .cards-2, .cards-3, .cards-4 { grid-template-columns: 1fr; }
+    .tiers { flex-direction: column; }
+    .mem-compare { flex-direction: column; }
+    .stats { gap: 12px; }
+    .stat { min-width: 80px; padding: 14px 18px; }
+    .stat .num { font-size: 24px; }
+    .blob-row { flex-wrap: wrap; }
+    .blob-row .scenario { width: 100%; text-align: left; }
+    .cluster-diagram { flex-direction: column; gap: 16px; }
+    .node-link { width: 2px; height: 20px; background: linear-gradient(180deg, var(--border), var(--cyan), var(--border)); }
+    .arch-cluster { flex-direction: column; align-items: center; }
+    .arch-node { max-width: 100%; }
+    .arch-arrow-group { flex-direction: row; padding-top: 0; }
+    .seq-diagram { overflow-x: auto; }
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<div id="deck">
+
+  <!-- Slide 1: Title -->
+  <div class="slide active" data-slide="0">
+    <div style="text-align:center">
+      <div style="font-family:var(--mono); font-size:13px; color:var(--cyan); letter-spacing:3px; text-transform:uppercase; margin-bottom:20px;" class="pulse">distributed systems</div>
+      <h1 style="background:linear-gradient(135deg, var(--cyan), var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">Confman</h1>
+      <p class="subtitle">Building a Distributed Configuration Service</p>
+      <p style="color:var(--text-muted);font-size:15px;margin-bottom:40px;">A 30-Day Journey from Design to Production-Ready System</p>
+      <div class="stats stagger">
+        <div class="stat"><div class="num accent">~90</div><div class="label">Commits</div></div>
+        <div class="stat"><div class="num green">15</div><div class="label">Pull Requests</div></div>
+        <div class="stat"><div class="num amber">30</div><div class="label">Days</div></div>
+        <div class="stat"><div class="num pink">1</div><div class="label">Developer</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 2: Initial Requirements -->
+  <div class="slide" data-slide="1">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--pink); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">The Problem</div>
+      <h2>Why Build Confman?</h2>
+      <p style="margin-bottom:20px;">Configuration lived in a <strong class="red">15 GB git repository</strong> of JSON files. No governance, no audit trail, no access control, no consistency guarantees.</p>
+
+      <!-- Requirements grid -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; width:100%; max-width:900px;">
+        <!-- Functional -->
+        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px; border-top:3px solid var(--cyan);">
+          <h3 style="font-size:14px; margin-bottom:10px;"><span class="accent">Functional</span> Requirements</h3>
+          <ul style="list-style:none; font-size:13px; color:var(--text-dim);">
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--cyan);">&#9656;</span> Hierarchical key-value store with namespaces</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--cyan);">&#9656;</span> RBAC: viewer, editor, publisher, admin</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--cyan);">&#9656;</span> Four-eyes publishing workflow</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--cyan);">&#9656;</span> Schema validation (JSON Schema)</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--cyan);">&#9656;</span> Immutable version history + audit trail</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--cyan);">&#9656;</span> REST API with content negotiation</li>
+          </ul>
+        </div>
+        <!-- Non-functional -->
+        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px; border-top:3px solid var(--amber);">
+          <h3 style="font-size:14px; margin-bottom:10px;"><span class="amber">Non-Functional</span> Requirements</h3>
+          <ul style="list-style:none; font-size:13px; color:var(--text-dim);">
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> <strong style="color:var(--text);">100K+</strong> keys, <strong style="color:var(--text);">100&ndash;200</strong> req/sec</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> <strong style="color:var(--text);">70&ndash;90%</strong> reads, burst write patterns</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> Strong consistency for writes, bounded staleness for reads</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> Survive single-node failure (fault tolerant)</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> VMs / bare metal &mdash; no Kubernetes</li>
+            <li style="padding:4px 0; padding-left:16px; position:relative;"><span style="position:absolute;left:0;color:var(--amber);">&#9656;</span> Azure AD / OIDC for authentication</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Constraints summary -->
+      <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:16px;">
+        <div style="padding:6px 14px; background:rgba(34,211,238,0.08); border:1px solid rgba(34,211,238,0.2); border-radius:8px; font-size:12px; font-family:var(--mono); color:var(--cyan);">single source of truth</div>
+        <div style="padding:6px 14px; background:rgba(52,211,153,0.08); border:1px solid rgba(52,211,153,0.2); border-radius:8px; font-size:12px; font-family:var(--mono); color:var(--green);">governed changes</div>
+        <div style="padding:6px 14px; background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.2); border-radius:8px; font-size:12px; font-family:var(--mono); color:var(--amber);">distributed &amp; fault-tolerant</div>
+        <div style="padding:6px 14px; background:rgba(244,114,182,0.08); border:1px solid rgba(244,114,182,0.2); border-radius:8px; font-size:12px; font-family:var(--mono); color:var(--pink);">full audit trail</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 3: Brainstorming Process -->
+  <div class="slide" data-slide="2">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--green); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">January 23, 2026</div>
+      <h2>The Brainstorming Process</h2>
+      <p style="margin-bottom:16px;">Four brainstorm sessions, each producing a document with <strong style="color:var(--text);">decisions</strong>, <strong style="color:var(--text);">alternatives considered</strong>, and <strong style="color:var(--text);">open questions</strong>:</p>
+
+      <!-- 4 brainstorm cards with Q&A -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; width:100%; max-width:920px;">
+
+        <!-- System Architecture -->
+        <div class="card" style="border-top:3px solid var(--cyan); padding:16px;">
+          <h3 style="font-size:14px; margin-bottom:8px;"><span class="accent">1.</span> System Architecture</h3>
+          <div style="font-size:12px; color:var(--text-dim); line-height:1.5;">
+            <div style="margin-bottom:6px;">
+              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">DECIDED</span><br>
+              <span style="color:var(--text);">Single Raft cluster</span> &mdash; all nodes identical<br>
+              <span style="color:var(--text);">Static membership</span> &mdash; addresses in config<br>
+              <span style="color:var(--text);">DotNext.Net.Cluster</span> for consensus
+            </div>
+            <div style="padding-top:6px; border-top:1px solid var(--border);">
+              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">REJECTED</span><br>
+              <span class="dim">Sharding by namespace</span> &mdash; unnecessary at this scale<br>
+              <span class="dim">Non-voting read replicas</span> &mdash; followers can serve reads
+            </div>
+          </div>
+        </div>
+
+        <!-- Data Model -->
+        <div class="card" style="border-top:3px solid var(--green); padding:16px;">
+          <h3 style="font-size:14px; margin-bottom:8px;"><span class="green">2.</span> Data Model</h3>
+          <div style="font-size:12px; color:var(--text-dim); line-height:1.5;">
+            <div style="margin-bottom:6px;">
+              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">DECIDED</span><br>
+              <span style="color:var(--text);">Document-oriented</span> &mdash; self-contained, no joins<br>
+              <span style="color:var(--text);">Cascading inheritance</span> &mdash; RBAC + schemas<br>
+              <span style="color:var(--text);">External secret refs</span> &mdash; <code style="font-size:11px;">keyvault://</code> pointers
+            </div>
+            <div style="padding-top:6px; border-top:1px solid var(--border);">
+              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">OPEN QUESTIONS</span><br>
+              <span class="dim">History chunking strategy?</span><br>
+              <span class="dim">Parent deletion &rarr; children?</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- API Design -->
+        <div class="card" style="border-top:3px solid var(--amber); padding:16px;">
+          <h3 style="font-size:14px; margin-bottom:8px;"><span class="amber">3.</span> API Design</h3>
+          <div style="font-size:12px; color:var(--text-dim); line-height:1.5;">
+            <div style="margin-bottom:6px;">
+              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">DECIDED</span><br>
+              <span style="color:var(--text);">URL versioning</span> &mdash; <code style="font-size:11px;">/api/v1/...</code><br>
+              <span style="color:var(--text);">RFC 7807 errors</span> &mdash; machine-readable<br>
+              <span style="color:var(--text);">Static API keys</span> &mdash; <code style="font-size:11px;">X-API-Key</code> header<br>
+              <span style="color:var(--text);">Cursor pagination</span> &mdash; no skip/dup issues
+            </div>
+            <div style="padding-top:6px; border-top:1px solid var(--border);">
+              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">REJECTED</span><br>
+              <span class="dim">Bulk operations</span> &mdash; one resource per request
+            </div>
+          </div>
+        </div>
+
+        <!-- Publishing Workflow -->
+        <div class="card" style="border-top:3px solid var(--pink); padding:16px;">
+          <h3 style="font-size:14px; margin-bottom:8px;"><span class="pink">4.</span> Publishing Workflow</h3>
+          <div style="font-size:12px; color:var(--text-dim); line-height:1.5;">
+            <div style="margin-bottom:6px;">
+              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">DECIDED</span><br>
+              <span style="color:var(--text);">Four-eyes principle</span> &mdash; no self-approval, ever<br>
+              <span style="color:var(--text);">Configurable approvers</span> &mdash; 1-N per namespace<br>
+              <span style="color:var(--text);">Webhook notifications</span> &mdash; Slack, Teams, custom<br>
+              <span style="color:var(--text);">Validate on publish</span> &mdash; drafts can be invalid
+            </div>
+            <div style="padding-top:6px; border-top:1px solid var(--border);">
+              <span style="color:var(--text-muted); font-family:var(--mono); font-size:10px;">DEFERRED TO V2</span><br>
+              <span class="dim">Scheduled publishing</span><br>
+              <span class="dim">Change windows</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Outcome -->
+      <div style="margin-top:16px; text-align:center; padding:12px 20px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; max-width:920px; width:100%;">
+        <span style="color:var(--text-muted); font-size:13px;">Result:</span>
+        <span style="color:var(--text); font-size:13px; font-weight:600;"> 26 key decisions locked</span>
+        <span style="color:var(--text-muted); font-size:13px;"> &bull; </span>
+        <span style="color:var(--text); font-size:13px; font-weight:600;">4 alternatives rejected with rationale</span>
+        <span style="color:var(--text-muted); font-size:13px;"> &bull; </span>
+        <span style="color:var(--text); font-size:13px; font-weight:600;">12 open questions catalogued</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 4: The Vision -->
+  <div class="slide" data-slide="3">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--text-muted); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">The Problem</div>
+      <h2>Replace a <span class="red">15 GB</span> git repo of JSON configs</h2>
+      <p style="margin-bottom:28px;">with a governed, hierarchical key-value store as the single source of truth for configuration data.</p>
+
+      <div class="cluster-diagram">
+        <div class="node-box leader">
+          <span>Node 1</span>
+          <span class="role">LEADER</span>
+        </div>
+        <div class="node-link"></div>
+        <div class="node-box">
+          <span>Node 2</span>
+          <span class="role">follower</span>
+        </div>
+        <div class="node-link"></div>
+        <div class="node-box">
+          <span>Node 3</span>
+          <span class="role">follower</span>
+        </div>
+      </div>
+
+      <div style="margin-top:20px;">
+        <div style="font-family:var(--mono); font-size:12px; color:var(--text-muted); letter-spacing:2px; text-transform:uppercase; margin-bottom:12px;">Technology Stack</div>
+        <div class="phase-chips">
+          <span class="phase-chip" style="border-color:var(--cyan); color:var(--cyan);">.NET 10</span>
+          <span class="phase-chip" style="border-color:var(--green); color:var(--green);">DotNext Raft</span>
+          <span class="phase-chip" style="border-color:var(--amber); color:var(--amber);">LiteDB</span>
+          <span class="phase-chip" style="border-color:var(--pink); color:var(--pink);">ASP.NET Core REST</span>
+          <span class="phase-chip" style="border-color:var(--purple); color:var(--purple);">Serilog</span>
+        </div>
+      </div>
+      <p style="margin-top:16px;">Architecture: <strong style="color:var(--text);">single 3-node Raft cluster</strong>, all nodes identical. Reject sharding as premature &mdash; 200 req/s capacity far exceeds the ~50 writes/day workload.</p>
+    </div>
+  </div>
+
+  <!-- Slide 5: Architecture -->
+  <div class="slide" data-slide="4">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--cyan); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Architecture</div>
+      <h2>Node Architecture</h2>
+      <p style="margin-bottom:4px;">Every node runs the <strong style="color:var(--text);">identical full stack</strong>. The leader handles writes; any node can serve reads.</p>
+
+      <!-- 3-node cluster diagram with internal layers -->
+      <div class="arch-cluster">
+        <!-- Node 1 (Leader) -->
+        <div class="arch-node is-leader">
+          <div class="arch-node-header">
+            <span class="arch-node-name accent">Node 1 <span class="dim" style="font-weight:400;">:6100</span></span>
+            <span class="arch-node-role">Leader</span>
+          </div>
+          <div class="arch-node-layer l-api">
+            <span class="layer-dot"></span>
+            <span class="layer-name">REST API</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Controllers</span>
+          </div>
+          <div class="arch-node-layer l-mw">
+            <span class="layer-dot"></span>
+            <span class="layer-name">Middleware</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Auth + ReadBarrier</span>
+          </div>
+          <div class="arch-node-layer l-raft">
+            <span class="layer-dot"></span>
+            <span class="layer-name">Raft Consensus</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Batching + SM</span>
+          </div>
+          <div class="arch-node-layer l-store">
+            <span class="layer-dot"></span>
+            <span class="layer-name">Storage</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">LiteDB + WAL</span>
+          </div>
+          <div class="arch-node-storage">
+            <span class="storage-chip">confman.db</span>
+            <span class="storage-chip">WAL/</span>
+            <span class="storage-chip">blobs/</span>
+          </div>
+        </div>
+
+        <!-- Arrows between Node 1 and Node 2 -->
+        <div class="arch-arrow-group">
+          <span class="arch-arrow">AppendEntries</span>
+          <div class="arch-arrow-line raft-line"></div>
+          <div class="arch-arrow-line raft-line bidir" style="transform:scaleX(-1);"></div>
+          <span class="arch-arrow">Vote / ACK</span>
+        </div>
+
+        <!-- Node 2 (Follower) -->
+        <div class="arch-node">
+          <div class="arch-node-header">
+            <span class="arch-node-name">Node 2 <span class="dim" style="font-weight:400;">:6200</span></span>
+            <span class="arch-node-role">Follower</span>
+          </div>
+          <div class="arch-node-layer l-api">
+            <span class="layer-dot"></span>
+            <span class="layer-name">REST API</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Controllers</span>
+          </div>
+          <div class="arch-node-layer l-mw">
+            <span class="layer-dot"></span>
+            <span class="layer-name">Middleware</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Auth + ReadBarrier</span>
+          </div>
+          <div class="arch-node-layer l-raft">
+            <span class="layer-dot"></span>
+            <span class="layer-name">Raft Consensus</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Replication</span>
+          </div>
+          <div class="arch-node-layer l-store">
+            <span class="layer-dot"></span>
+            <span class="layer-name">Storage</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">LiteDB + WAL</span>
+          </div>
+          <div class="arch-node-storage">
+            <span class="storage-chip">confman.db</span>
+            <span class="storage-chip">WAL/</span>
+            <span class="storage-chip">blobs/</span>
+          </div>
+        </div>
+
+        <!-- Arrows between Node 2 and Node 3 -->
+        <div class="arch-arrow-group">
+          <span class="arch-arrow">AppendEntries</span>
+          <div class="arch-arrow-line raft-line"></div>
+          <div class="arch-arrow-line raft-line bidir" style="transform:scaleX(-1);"></div>
+          <span class="arch-arrow">Vote / ACK</span>
+        </div>
+
+        <!-- Node 3 (Follower) -->
+        <div class="arch-node">
+          <div class="arch-node-header">
+            <span class="arch-node-name">Node 3 <span class="dim" style="font-weight:400;">:6300</span></span>
+            <span class="arch-node-role">Follower</span>
+          </div>
+          <div class="arch-node-layer l-api">
+            <span class="layer-dot"></span>
+            <span class="layer-name">REST API</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Controllers</span>
+          </div>
+          <div class="arch-node-layer l-mw">
+            <span class="layer-dot"></span>
+            <span class="layer-name">Middleware</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Auth + ReadBarrier</span>
+          </div>
+          <div class="arch-node-layer l-raft">
+            <span class="layer-dot"></span>
+            <span class="layer-name">Raft Consensus</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">Replication</span>
+          </div>
+          <div class="arch-node-layer l-store">
+            <span class="layer-dot"></span>
+            <span class="layer-name">Storage</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--text-muted);">LiteDB + WAL</span>
+          </div>
+          <div class="arch-node-storage">
+            <span class="storage-chip">confman.db</span>
+            <span class="storage-chip">WAL/</span>
+            <span class="storage-chip">blobs/</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div style="display:flex; gap:20px; justify-content:center; flex-wrap:wrap; margin-top:8px;">
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px; font-family:var(--mono);">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--cyan);"></span>
+          <span style="color:var(--cyan);">REST API</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px; font-family:var(--mono);">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--green);"></span>
+          <span style="color:var(--green);">Middleware</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px; font-family:var(--mono);">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--amber);"></span>
+          <span style="color:var(--amber);">Raft Consensus</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px; font-family:var(--mono);">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--pink);"></span>
+          <span style="color:var(--pink);">Storage</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px; font-family:var(--mono);">
+          <span style="width:16px;height:2px;background:var(--amber);"></span>
+          <span style="color:var(--amber);">Raft RPC (HTTP/2)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 6: Raft in Action -->
+  <div class="slide" data-slide="5">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--amber); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Raft In Action</div>
+      <h2>Write &amp; Read Flows</h2>
+
+      <!-- Two side-by-side sequence diagrams -->
+      <div style="display:flex; gap:24px; width:100%; max-width:960px; flex-wrap:wrap;">
+
+        <!-- WRITE FLOW -->
+        <div style="flex:1; min-width:420px; background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:20px; border-top:3px solid var(--amber);">
+          <h3 class="amber" style="font-size:15px; margin-bottom:14px;">PUT /api/v1/namespaces/prod/config/timeout</h3>
+
+          <!-- Sequence diagram as styled table -->
+          <div style="font-family:var(--mono); font-size:11px;">
+            <!-- Actor headers -->
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; text-align:center; margin-bottom:4px;">
+              <div style="color:var(--green);">Client</div>
+              <div style="color:var(--cyan);">Leader</div>
+              <div style="color:var(--text-muted);">Follower 2</div>
+              <div style="color:var(--text-muted);">Follower 3</div>
+            </div>
+
+            <!-- Lifeline rows -->
+            <div style="position:relative;">
+              <!-- Vertical lifelines -->
+              <svg style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:0;">
+                <line x1="12.5%" y1="0" x2="12.5%" y2="100%" stroke="#1e293b" stroke-width="2" stroke-dasharray="4"/>
+                <line x1="37.5%" y1="0" x2="37.5%" y2="100%" stroke="rgba(34,211,238,0.3)" stroke-width="2" stroke-dasharray="4"/>
+                <line x1="62.5%" y1="0" x2="62.5%" y2="100%" stroke="#1e293b" stroke-width="2" stroke-dasharray="4"/>
+                <line x1="87.5%" y1="0" x2="87.5%" y2="100%" stroke="#1e293b" stroke-width="2" stroke-dasharray="4"/>
+              </svg>
+
+              <!-- Row 1: Client -> Leader (or redirect) -->
+              <div style="position:relative; height:36px; display:flex; align-items:center; z-index:1;">
+                <svg style="position:absolute; width:100%; height:100%;">
+                  <defs><marker id="ah1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#34d399"/></marker></defs>
+                  <line x1="12.5%" y1="50%" x2="36%" y2="50%" stroke="#34d399" stroke-width="2" marker-end="url(#ah1)"/>
+                </svg>
+                <span style="position:absolute; left:17%; padding:1px 6px; background:var(--bg); color:var(--green); font-size:10px; border-radius:3px;">PUT request</span>
+              </div>
+
+              <!-- Row 2: Leader internal - batch + serialize -->
+              <div style="position:relative; height:32px; display:flex; align-items:center; z-index:1;">
+                <div style="position:absolute; left:calc(37.5% - 52px); width:104px; text-align:center; padding:3px 8px; background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.25); border-radius:5px; color:var(--amber); font-size:10px;">
+                  Channel&lt;T&gt; batch
+                </div>
+              </div>
+
+              <!-- Row 3: Leader -> WAL write -->
+              <div style="position:relative; height:32px; display:flex; align-items:center; z-index:1;">
+                <div style="position:absolute; left:calc(37.5% - 52px); width:104px; text-align:center; padding:3px 8px; background:rgba(244,114,182,0.1); border:1px solid rgba(244,114,182,0.25); border-radius:5px; color:var(--pink); font-size:10px;">
+                  WAL append + fsync
+                </div>
+              </div>
+
+              <!-- Row 4: Leader -> Follower 2 AppendEntries -->
+              <div style="position:relative; height:36px; display:flex; align-items:center; z-index:1;">
+                <svg style="position:absolute; width:100%; height:100%;">
+                  <defs><marker id="ah2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#fbbf24"/></marker></defs>
+                  <line x1="37.5%" y1="50%" x2="61%" y2="50%" stroke="#fbbf24" stroke-width="2" marker-end="url(#ah2)"/>
+                  <defs><marker id="ah3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#fbbf24"/></marker></defs>
+                  <line x1="37.5%" y1="50%" x2="86%" y2="50%" stroke="#fbbf24" stroke-width="2" marker-end="url(#ah3)"/>
+                </svg>
+                <span style="position:absolute; left:42%; padding:1px 6px; background:var(--bg); color:var(--amber); font-size:10px; border-radius:3px;">AppendEntries (HTTP/2)</span>
+              </div>
+
+              <!-- Row 5: Followers WAL write -->
+              <div style="position:relative; height:32px; display:flex; align-items:center; z-index:1;">
+                <div style="position:absolute; left:calc(62.5% - 40px); width:80px; text-align:center; padding:3px 6px; background:rgba(244,114,182,0.1); border:1px solid rgba(244,114,182,0.25); border-radius:5px; color:var(--pink); font-size:10px;">
+                  WAL append
+                </div>
+                <div style="position:absolute; left:calc(87.5% - 40px); width:80px; text-align:center; padding:3px 6px; background:rgba(244,114,182,0.1); border:1px solid rgba(244,114,182,0.25); border-radius:5px; color:var(--pink); font-size:10px;">
+                  WAL append
+                </div>
+              </div>
+
+              <!-- Row 6: ACK back -->
+              <div style="position:relative; height:36px; display:flex; align-items:center; z-index:1;">
+                <svg style="position:absolute; width:100%; height:100%;">
+                  <defs><marker id="ah4" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#34d399"/></marker></defs>
+                  <line x1="62.5%" y1="50%" x2="39%" y2="50%" stroke="#34d399" stroke-width="2" marker-end="url(#ah4)" stroke-dasharray="6"/>
+                  <line x1="87.5%" y1="50%" x2="64%" y2="50%" stroke="#34d399" stroke-width="2" stroke-dasharray="6"/>
+                </svg>
+                <span style="position:absolute; left:42%; padding:1px 6px; background:var(--bg); color:var(--green); font-size:10px; border-radius:3px;">ACK (quorum = 2/3)</span>
+              </div>
+
+              <!-- Row 7: Commit + Apply on all -->
+              <div style="position:relative; height:32px; display:flex; align-items:center; z-index:1;">
+                <div style="position:absolute; left:calc(37.5% - 36px); width:72px; text-align:center; padding:3px 6px; background:rgba(34,211,238,0.1); border:1px solid rgba(34,211,238,0.25); border-radius:5px; color:var(--cyan); font-size:10px;">
+                  Apply()
+                </div>
+                <div style="position:absolute; left:calc(62.5% - 36px); width:72px; text-align:center; padding:3px 6px; background:rgba(34,211,238,0.1); border:1px solid rgba(34,211,238,0.25); border-radius:5px; color:var(--cyan); font-size:10px;">
+                  Apply()
+                </div>
+                <div style="position:absolute; left:calc(87.5% - 36px); width:72px; text-align:center; padding:3px 6px; background:rgba(34,211,238,0.1); border:1px solid rgba(34,211,238,0.25); border-radius:5px; color:var(--cyan); font-size:10px;">
+                  Apply()
+                </div>
+              </div>
+
+              <!-- Row 8: Response -->
+              <div style="position:relative; height:36px; display:flex; align-items:center; z-index:1;">
+                <svg style="position:absolute; width:100%; height:100%;">
+                  <defs><marker id="ah5" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#34d399"/></marker></defs>
+                  <line x1="37.5%" y1="50%" x2="14%" y2="50%" stroke="#34d399" stroke-width="2" marker-end="url(#ah5)"/>
+                </svg>
+                <span style="position:absolute; left:17%; padding:1px 6px; background:var(--bg); color:var(--green); font-size:10px; border-radius:3px;">200 OK</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- READ FLOW -->
+        <div style="flex:1; min-width:420px; background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:20px; border-top:3px solid var(--cyan);">
+          <h3 class="accent" style="font-size:15px; margin-bottom:14px;">GET /api/v1/namespaces/prod/config/timeout</h3>
+
+          <div style="font-family:var(--mono); font-size:11px;">
+            <!-- Actor headers -->
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; text-align:center; margin-bottom:4px;">
+              <div style="color:var(--green);">Client</div>
+              <div style="color:var(--text-muted);">Follower 2</div>
+              <div style="color:var(--cyan);">Leader</div>
+              <div style="color:var(--text-muted);">Follower 3</div>
+            </div>
+
+            <div style="position:relative;">
+              <!-- Vertical lifelines -->
+              <svg style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:0;">
+                <line x1="12.5%" y1="0" x2="12.5%" y2="100%" stroke="#1e293b" stroke-width="2" stroke-dasharray="4"/>
+                <line x1="37.5%" y1="0" x2="37.5%" y2="100%" stroke="#1e293b" stroke-width="2" stroke-dasharray="4"/>
+                <line x1="62.5%" y1="0" x2="62.5%" y2="100%" stroke="rgba(34,211,238,0.3)" stroke-width="2" stroke-dasharray="4"/>
+                <line x1="87.5%" y1="0" x2="87.5%" y2="100%" stroke="#1e293b" stroke-width="2" stroke-dasharray="4"/>
+              </svg>
+
+              <!-- Row 1: Client -> Follower 2 -->
+              <div style="position:relative; height:36px; display:flex; align-items:center; z-index:1;">
+                <svg style="position:absolute; width:100%; height:100%;">
+                  <defs><marker id="rh1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#34d399"/></marker></defs>
+                  <line x1="12.5%" y1="50%" x2="36%" y2="50%" stroke="#34d399" stroke-width="2" marker-end="url(#rh1)"/>
+                </svg>
+                <span style="position:absolute; left:17%; padding:1px 6px; background:var(--bg); color:var(--green); font-size:10px; border-radius:3px;">GET request</span>
+              </div>
+
+              <!-- Row 2: ReadBarrierMiddleware -->
+              <div style="position:relative; height:32px; display:flex; align-items:center; z-index:1;">
+                <div style="position:absolute; left:calc(37.5% - 60px); width:120px; text-align:center; padding:3px 8px; background:rgba(52,211,153,0.1); border:1px solid rgba(52,211,153,0.25); border-radius:5px; color:var(--green); font-size:10px;">
+                  ReadBarrierMiddleware
+                </div>
+              </div>
+
+              <!-- Row 3: Follower -> Leader (read barrier RPC) -->
+              <div style="position:relative; height:36px; display:flex; align-items:center; z-index:1;">
+                <svg style="position:absolute; width:100%; height:100%;">
+                  <defs><marker id="rh2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#22d3ee"/></marker></defs>
+                  <line x1="37.5%" y1="50%" x2="61%" y2="50%" stroke="#22d3ee" stroke-width="2" marker-end="url(#rh2)"/>
+                </svg>
+                <span style="position:absolute; left:40%; padding:1px 6px; background:var(--bg); color:var(--cyan); font-size:10px; border-radius:3px;">ReadBarrier RPC</span>
+              </div>
+
+              <!-- Row 4: Leader confirms commit index -->
+              <div style="position:relative; height:32px; display:flex; align-items:center; z-index:1;">
+                <div style="position:absolute; left:calc(62.5% - 56px); width:112px; text-align:center; padding:3px 8px; background:rgba(34,211,238,0.1); border:1px solid rgba(34,211,238,0.25); border-radius:5px; color:var(--cyan); font-size:10px;">
+                  Confirm commitIndex
+                </div>
+              </div>
+
+              <!-- Row 5: Leader -> Follower (barrier response) -->
+              <div style="position:relative; height:36px; display:flex; align-items:center; z-index:1;">
+                <svg style="position:absolute; width:100%; height:100%;">
+                  <defs><marker id="rh3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#22d3ee"/></marker></defs>
+                  <line x1="62.5%" y1="50%" x2="39%" y2="50%" stroke="#22d3ee" stroke-width="2" marker-end="url(#rh3)" stroke-dasharray="6"/>
+                </svg>
+                <span style="position:absolute; left:40%; padding:1px 6px; background:var(--bg); color:var(--cyan); font-size:10px; border-radius:3px;">commitIdx = 42</span>
+              </div>
+
+              <!-- Row 6: Wait for apply -->
+              <div style="position:relative; height:32px; display:flex; align-items:center; z-index:1;">
+                <div style="position:absolute; left:calc(37.5% - 60px); width:120px; text-align:center; padding:3px 8px; background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.25); border-radius:5px; color:var(--amber); font-size:10px;">
+                  Wait localIdx &ge; 42
+                </div>
+              </div>
+
+              <!-- Row 7: Read from LiteDB -->
+              <div style="position:relative; height:32px; display:flex; align-items:center; z-index:1;">
+                <div style="position:absolute; left:calc(37.5% - 52px); width:104px; text-align:center; padding:3px 8px; background:rgba(244,114,182,0.1); border:1px solid rgba(244,114,182,0.25); border-radius:5px; color:var(--pink); font-size:10px;">
+                  LiteDB read
+                </div>
+              </div>
+
+              <!-- Row 8: Response -->
+              <div style="position:relative; height:36px; display:flex; align-items:center; z-index:1;">
+                <svg style="position:absolute; width:100%; height:100%;">
+                  <defs><marker id="rh4" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#34d399"/></marker></defs>
+                  <line x1="37.5%" y1="50%" x2="14%" y2="50%" stroke="#34d399" stroke-width="2" marker-end="url(#rh4)"/>
+                </svg>
+                <span style="position:absolute; left:17%; padding:1px 6px; background:var(--bg); color:var(--green); font-size:10px; border-radius:3px;">200 + value</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Leader shortcut note -->
+          <div style="margin-top:10px; padding:8px 12px; background:rgba(34,211,238,0.05); border:1px solid rgba(34,211,238,0.15); border-radius:8px; font-size:11px; color:var(--text-dim);">
+            <strong class="accent">Leader shortcut:</strong> If lease valid via <code style="color:var(--cyan);">TryGetLeaseToken</code>, skip ReadBarrier RPC entirely &mdash; read directly from local LiteDB.
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom callouts -->
+      <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:12px; width:100%; max-width:960px;">
+        <div style="padding:8px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; font-size:12px; color:var(--text-dim); border-left:3px solid var(--amber);">
+          <strong class="amber">Writes:</strong> Leader-only. Follower returns <code style="color:var(--amber);">307</code> redirect.
+        </div>
+        <div style="padding:8px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; font-size:12px; color:var(--text-dim); border-left:3px solid var(--cyan);">
+          <strong class="accent">Reads:</strong> Any node. Linearizable via read barrier.
+        </div>
+        <div style="padding:8px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; font-size:12px; color:var(--text-dim); border-left:3px solid var(--green);">
+          <strong class="green">Quorum:</strong> 2 of 3 nodes must ACK before commit.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 7: Design First -->
+  <div class="slide" data-slide="6">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--amber); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">January 23</div>
+      <h2>Design First, Code Second</h2>
+      <p style="margin-bottom:20px;">Four brainstorm documents before a single line of code:</p>
+      <div class="cards cards-2">
+        <div class="card" style="border-top: 3px solid var(--cyan);">
+          <h3 class="accent">System Architecture</h3>
+          <p>Single Raft cluster. All nodes identical. Reject sharding and read replicas.</p>
+        </div>
+        <div class="card" style="border-top: 3px solid var(--green);">
+          <h3 class="green">Data Model</h3>
+          <p>Hierarchical namespaces, cascading RBAC, immutable version history.</p>
+        </div>
+        <div class="card" style="border-top: 3px solid var(--amber);">
+          <h3 class="amber">API Design</h3>
+          <p>REST with URL versioning, RFC 7807 errors, cursor-based pagination.</p>
+        </div>
+        <div class="card" style="border-top: 3px solid var(--pink);">
+          <h3 class="pink">Publishing Workflow</h3>
+          <p>Four-eyes governance principle with configurable approvals (v2 feature).</p>
+        </div>
+      </div>
+      <div style="margin-top:24px; text-align:center; padding:16px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px;">
+        <span style="color:var(--text-muted); font-size:14px;">Then the entire initial implementation landed as</span>
+        <span style="color:var(--cyan); font-family:var(--mono); font-size:16px; font-weight:700;"> ONE commit</span>
+        <span style="color:var(--text-muted); font-size:14px;"> &mdash; PR #1</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 8: Making It Work -->
+  <div class="slide" data-slide="7">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--red); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">January 24&ndash;30</div>
+      <h2>The Distributed Systems Reckoning</h2>
+      <p style="margin-bottom:20px;">Three fundamental bugs &mdash; each a classic Raft misunderstanding:</p>
+      <ul class="bug-list">
+        <li>
+          <strong>Audit Duplication</strong> &mdash; N events per command (one per node). Misunderstanding of state machine <code>Apply()</code> semantics.
+          <br><span class="fix">FIX: Apply creates event on ALL nodes identically</span>
+        </li>
+        <li>
+          <strong>Audit Not Replicated</strong> <span class="dim mono" style="font-size:12px;">(GitHub #2)</span> &mdash; Events only created on the leader node. All durable state must flow through the consensus log.
+          <br><span class="fix">FIX: Deterministic IDs + idempotent upsert</span>
+        </li>
+        <li>
+          <strong>Snapshots Empty</strong> <span class="dim mono" style="font-size:12px;">(GitHub #3)</span> &mdash; Snapshot serialization didn't include actual data. Snapshot = <em>complete</em> state.
+          <br><span class="fix">FIX: Full-state JSON snapshot serialization</span>
+        </li>
+      </ul>
+      <p style="margin-top:16px; padding:12px 16px; background: rgba(34, 211, 238, 0.05); border-left:3px solid var(--cyan); border-radius: 0 8px 8px 0; font-size:14px;">
+        <strong class="accent">Lesson:</strong> Distributed systems correctness requires explicit thinking about which node does what work.
+      </p>
+    </div>
+  </div>
+
+  <!-- Slide 9: Making It Correct -->
+  <div class="slide" data-slide="8">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--green); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 1&ndash;2</div>
+      <h2>Making It Correct</h2>
+      <p style="margin-bottom:20px;">From "does data arrive?" to "is it consistent?"</p>
+      <ul class="feature-list">
+        <li>
+          <span class="icon accent">&#9670;</span>
+          <div>
+            <strong style="color:var(--text);">Linearizable Reads</strong>
+            <p style="font-size:13px;"><code>ReadBarrierMiddleware</code> calls <code>ApplyReadBarrierAsync()</code> on every GET &mdash; ensures reads reflect latest committed writes.</p>
+          </div>
+        </li>
+        <li>
+          <span class="icon green">&#9670;</span>
+          <div>
+            <strong style="color:var(--text);">Leader Forwarding</strong>
+            <p style="font-size:13px;">Writes return <code>HTTP 307</code> redirect to current leader. Clients must follow redirects.</p>
+          </div>
+        </li>
+        <li>
+          <span class="icon red">&#9670;</span>
+          <div>
+            <strong style="color:var(--text);">Silent RBAC Bug</strong>
+            <p style="font-size:13px;">Role <code>"reader"</code> &ne; policy <code>"read"</code> &mdash; entire auth system was broken. Fixed by aligning to <code>viewer | editor | publisher | admin</code>.</p>
+          </div>
+        </li>
+        <li>
+          <span class="icon amber">&#9670;</span>
+          <div>
+            <strong style="color:var(--text);">Strongly-Typed Audit Actions</strong>
+            <p style="font-size:13px;">Replaced string literals with <code>AuditAction</code> value object for compile-time safety.</p>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Slide 10: Measure First -->
+  <div class="slide" data-slide="9">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--purple); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 3</div>
+      <h2>Measure Before You Optimize</h2>
+      <p style="margin-bottom:24px;">Built a complete Locust benchmark suite <em>before</em> writing any optimization code:</p>
+      <div class="cards cards-3">
+        <div class="card">
+          <h3 class="accent">Throughput</h3>
+          <p>Sequential & concurrent write/read, mixed 80/20 workloads</p>
+        </div>
+        <div class="card">
+          <h3 class="green">Latency</h3>
+          <p>Percentiles: p50, p95, p99, max across all operations</p>
+        </div>
+        <div class="card">
+          <h3 class="amber">Data Tiers</h3>
+          <p>1K and 10K entries, configurable payload sizes</p>
+        </div>
+      </div>
+      <div style="margin-top:24px; padding:16px 20px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; text-align:center;">
+        <span style="color:var(--red); font-size:18px;">&#9888;</span>
+        <span style="font-size:14px; color:var(--text-dim);"> Immediately surfaced a lurking</span>
+        <span style="color:var(--red); font-family:var(--mono); font-weight:600;"> WAL corruption bug</span>
+        <span style="font-size:14px; color:var(--text-dim);"> (null bytes in deserialization)</span>
+      </div>
+      <p style="margin-top:16px; font-size: 14px; text-align: center; color: var(--text-muted); font-style: italic;">
+        "If you haven't measured it, you don't know where the bottleneck is."
+      </p>
+    </div>
+  </div>
+
+  <!-- Slide 11: Performance Sprint -->
+  <div class="slide" data-slide="10">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--cyan); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 5&ndash;10</div>
+      <h2>The Performance Sprint</h2>
+      <p style="margin-bottom:20px;">Three tiers of optimization &rarr; <strong class="cyan" style="font-size:20px;">3.6x</strong> write throughput</p>
+      <div class="tiers">
+        <div class="tier tier-1">
+          <h3 class="green">Tier 1 &mdash; Config Wins <span class="dim" style="font-weight:400;">(~2x)</span></h3>
+          <ul>
+            <li>LiteDB <code>Connection=direct</code></li>
+            <li>WAL <code>FlushInterval=100ms</code></li>
+            <li>HTTP/2 for Raft RPCs</li>
+            <li>Remove pre-write existence check</li>
+          </ul>
+        </div>
+        <div class="tier tier-2">
+          <h3 class="amber">Tier 2 &mdash; Eliminate Waste</h3>
+          <ul>
+            <li>Remove post-write poll loop</li>
+            <li><code>SerializeToUtf8Bytes</code></li>
+            <li>Eliminate read-before-write</li>
+            <li>Leader lease via <code>TryGetLeaseToken</code></li>
+          </ul>
+        </div>
+        <div class="tier tier-3">
+          <h3 class="accent">Tier 3 &mdash; Write Batching <span class="dim" style="font-weight:400;">(3.6x)</span></h3>
+          <ul>
+            <li><code>Channel&lt;T&gt;</code> + flush loop</li>
+            <li>BatchCommand groups concurrent writes</li>
+            <li>Amortize Raft quorum cost</li>
+            <li>MessagePack + LZ4 serialization</li>
+          </ul>
+        </div>
+      </div>
+      <div style="margin-top:20px; display:flex; justify-content:center; gap:40px; font-family:var(--mono); font-size:14px;">
+        <span><span class="dim">Before:</span> <span class="red">124 req/s</span></span>
+        <span style="color:var(--text-muted);">&rarr;</span>
+        <span><span class="dim">After:</span> <span class="green" style="font-size:18px; font-weight:700;">453 req/s</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 12: Memory Crisis -->
+  <div class="slide" data-slide="11">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--red); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 8&ndash;11</div>
+      <h2>The Memory Crisis</h2>
+      <p style="margin-bottom:20px;">Stress test: 1,000 &times; 1 MB configs. Nodes hit <span class="red" style="font-weight:700;">17&ndash;29 GB</span> and never reclaimed.</p>
+
+      <div class="mem-compare">
+        <div class="mem-box" style="border-color: var(--red);">
+          <div class="val red">17-29 GB</div>
+          <div class="lbl">Before fix (per node)</div>
+        </div>
+        <div style="display:flex;align-items:center;font-size:28px;color:var(--text-muted);">&rarr;</div>
+        <div class="mem-box" style="border-color: var(--green);">
+          <div class="val green">450 MB</div>
+          <div class="lbl">After fix (per node)</div>
+        </div>
+      </div>
+
+      <div style="font-family:var(--mono); font-size:12px; color:var(--text-muted); letter-spacing:2px; text-transform:uppercase; margin:16px 0 10px;">Root Causes &amp; Six-Layer Fix</div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; width:100%; max-width:800px; font-size:13px;">
+        <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--red);">
+          <strong style="color:var(--red);">PrivateMemory WAL</strong><br><span class="dim">Native allocs invisible to cleanup</span>
+        </div>
+        <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--green);">
+          <strong style="color:var(--green);">Revert to SharedMemory</strong><br><span class="dim">Accept throughput loss</span>
+        </div>
+        <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--red);">
+          <strong style="color:var(--red);">LOH Fragmentation</strong><br><span class="dim">payload.ToArray(), snapshot byte[]</span>
+        </div>
+        <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--green);">
+          <strong style="color:var(--green);">SequenceReader + Pooled Buffers</strong><br><span class="dim">Zero-alloc deserialization</span>
+        </div>
+        <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--red);">
+          <strong style="color:var(--red);">Server GC Inertia</strong><br><span class="dim">Gen 2 never runs during idle</span>
+        </div>
+        <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; border-left:3px solid var(--green);">
+          <strong style="color:var(--green);">60s GC Timer + LOH Compaction</strong><br><span class="dim">DATAS mode + RetainVM=false</span>
+        </div>
+      </div>
+      <p style="margin-top:12px; font-size:13px; color:var(--amber); text-align:center; font-style:italic;">
+        The PrivateMemory saga: 30-50% throughput gain &rarr; rolled back due to 40x memory bloat
+      </p>
+    </div>
+  </div>
+
+  <!-- Slide 13: Blob Store -->
+  <div class="slide" data-slide="12">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--green); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 12&ndash;13</div>
+      <h2>The Architectural Leap</h2>
+      <p style="margin-bottom:20px;">Content-addressed blob store &mdash; separate large values from Raft consensus:</p>
+
+      <div class="blob-compare">
+        <div class="blob-row">
+          <span class="scenario">1 MB config value</span>
+          <span class="blob-val blob-before">500 KB WAL</span>
+          <span class="arrow">&rarr;</span>
+          <span class="blob-val blob-after">200 B pointer</span>
+          <span class="blob-reduction">2,500x smaller</span>
+        </div>
+        <div class="blob-row">
+          <span class="scenario">1,000 &times; 1 MB snapshot</span>
+          <span class="blob-val blob-before">500 MB</span>
+          <span class="arrow">&rarr;</span>
+          <span class="blob-val blob-after">200 KB</span>
+          <span class="blob-reduction">2,500x smaller</span>
+        </div>
+      </div>
+
+      <div style="font-family:var(--mono); font-size:12px; color:var(--text-muted); letter-spacing:2px; text-transform:uppercase; margin:20px 0 12px;">6-Phase Implementation</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; width:100%; max-width:800px;">
+        <div class="card" style="padding:14px;"><h3 style="font-size:13px;"><span class="accent">1.</span> IBlobStore</h3><p style="font-size:12px;">Streaming abstractions</p></div>
+        <div class="card" style="padding:14px;"><h3 style="font-size:13px;"><span class="accent">2.</span> Blob Endpoints</h3><p style="font-size:12px;">Cluster token auth</p></div>
+        <div class="card" style="padding:14px;"><h3 style="font-size:13px;"><span class="accent">3.</span> Quorum-First</h3><p style="font-size:12px;">Majority ACK before commit</p></div>
+        <div class="card" style="padding:14px;"><h3 style="font-size:13px;"><span class="accent">4.</span> BlobRefCommand</h3><p style="font-size:12px;">Nullable ConfigEntry.Value</p></div>
+        <div class="card" style="padding:14px;"><h3 style="font-size:13px;"><span class="accent">5.</span> WriteService</h3><p style="font-size:12px;">Inline vs blob routing</p></div>
+        <div class="card" style="padding:14px;"><h3 style="font-size:13px;"><span class="accent">6.</span> Snapshot V3</h3><p style="font-size:12px;">Metadata + blob manifest</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 14: Timeline -->
+  <div class="slide" data-slide="13">
+    <div class="slide-inner stagger">
+      <h2 style="text-align:center; margin-bottom:24px;">Project Timeline</h2>
+      <div class="timeline" id="timeline">
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:var(--cyan);"></div>
+          <div class="tl-date accent">Jan 23</div>
+          <div class="tl-title">Design + Initial Implementation <span class="tl-commits">4 commits</span></div>
+          <div class="tl-desc">4 brainstorm docs, then entire codebase in 1 commit (PR #1)</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:var(--cyan);"></div>
+          <div class="tl-date accent">Jan 24</div>
+          <div class="tl-title">Make the Cluster Form <span class="tl-commits">9 commits</span></div>
+          <div class="tl-desc">Fix member discovery, add dashboard for visibility</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:var(--red);"></div>
+          <div class="tl-date red">Jan 25&ndash;30</div>
+          <div class="tl-title">Fix Replication Bugs <span class="tl-commits">13 commits</span></div>
+          <div class="tl-desc">Audit duplication, missing replication, empty snapshots (PRs #2, #3, #4)</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:var(--green);"></div>
+          <div class="tl-date green">Feb 1&ndash;2</div>
+          <div class="tl-title">Consistency &amp; Auth <span class="tl-commits">11 commits</span></div>
+          <div class="tl-desc">Linearizable reads, leader forwarding, RBAC fix (PRs #5&ndash;#8)</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:var(--purple);"></div>
+          <div class="tl-date purple">Feb 3</div>
+          <div class="tl-title">Benchmarking Infrastructure <span class="tl-commits">12 commits</span></div>
+          <div class="tl-desc">Locust suite, WAL null-bytes bug surfaced (PRs #9&ndash;#10)</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:var(--amber);"></div>
+          <div class="tl-date amber">Feb 5&ndash;10</div>
+          <div class="tl-title">Performance Sprint: 3 Tiers <span class="tl-commits">27 commits</span></div>
+          <div class="tl-desc">Config wins &rarr; waste elimination &rarr; write batching = 3.6x throughput (PRs #12&ndash;#14)</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:var(--red);"></div>
+          <div class="tl-date red">Feb 11</div>
+          <div class="tl-title">Memory Crisis &amp; Fix <span class="tl-commits">1 commit</span></div>
+          <div class="tl-desc">17 GB &rarr; 450 MB: revert PrivateMemory, six-layer GC fix</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:var(--green);"></div>
+          <div class="tl-date green">Feb 12&ndash;13</div>
+          <div class="tl-title">Content-Addressed Blob Store <span class="tl-commits">10 commits</span></div>
+          <div class="tl-desc">6-phase implementation, quorum-first replication (PR #15)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 15: Key Takeaways -->
+  <div class="slide" data-slide="14">
+    <div class="slide-inner stagger">
+      <h2 style="text-align:center; margin-bottom:24px;">Key Takeaways</h2>
+      <ol class="takeaways">
+        <li><strong>Design first, code second</strong> <span class="dim">&mdash; Four brainstorm documents before any implementation. The architecture held up throughout.</span></li>
+        <li><strong>Distributed systems bugs are subtle</strong> <span class="dim">&mdash; Each bug was a classic Raft misunderstanding that only appeared in a real cluster.</span></li>
+        <li><strong>Measure before you optimize</strong> <span class="dim">&mdash; Benchmarks immediately surfaced a lurking WAL bug and identified the real bottlenecks.</span></li>
+        <li><strong>Performance optimization is layered</strong> <span class="dim">&mdash; Config wins &rarr; waste elimination &rarr; architectural change. Each layer sets up the next.</span></li>
+        <li><strong>Memory is harder than throughput</strong> <span class="dim">&mdash; The PrivateMemory mode gave 30-50% throughput but caused 40x memory bloat.</span></li>
+        <li><strong>Know when to change the architecture</strong> <span class="dim">&mdash; When snapshots hit the ceiling, redesign the data path rather than tune harder.</span></li>
+        <li><strong>Document the invariants</strong> <span class="dim">&mdash; <code style="font-size:13px;">snapshot_time &lt; election_timeout &lt; request_timeout</code></span></li>
+      </ol>
+      <div style="text-align:center; margin-top:28px; padding:16px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px;">
+        <span style="font-family:var(--mono); font-size:14px; color:var(--text-muted);">
+          design &rarr; make it work &rarr; make it correct &rarr; measure &rarr; make it fast &rarr; fix what broke &rarr; build higher
+        </span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Navigation -->
+<div id="nav">
+  <button id="prev" onclick="go(-1)">&#8592;</button>
+  <div id="dots"></div>
+  <span id="counter">1 / 15</span>
+  <button id="next" onclick="go(1)">&#8594;</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let current = 0;
+
+  const progress = document.getElementById('progress');
+  const counter = document.getElementById('counter');
+  const dotsContainer = document.getElementById('dots');
+  const prevBtn = document.getElementById('prev');
+  const nextBtn = document.getElementById('next');
+
+  // Create dots
+  for (let i = 0; i < total; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'dot' + (i === 0 ? ' active' : '');
+    dot.onclick = () => goTo(i);
+    dotsContainer.appendChild(dot);
+  }
+
+  function updateUI() {
+    progress.style.width = ((current + 1) / total * 100) + '%';
+    counter.textContent = (current + 1) + ' / ' + total;
+    prevBtn.disabled = current === 0;
+    nextBtn.disabled = current === total - 1;
+
+    document.querySelectorAll('.dot').forEach((d, i) => {
+      d.classList.toggle('active', i === current);
+    });
+
+    // Animate bars on slide 7 (performance) when it becomes active
+    if (current === 6) {
+      // bars already visible via CSS, nothing extra needed
+    }
+  }
+
+  function goTo(index) {
+    if (index < 0 || index >= total || index === current) return;
+
+    const dir = index > current ? 1 : -1;
+    const prev = slides[current];
+    const next = slides[index];
+
+    prev.classList.remove('active');
+    prev.classList.add(dir > 0 ? 'exit-left' : '');
+    prev.style.transform = dir > 0 ? 'translateX(-40px)' : 'translateX(40px)';
+    prev.style.opacity = '0';
+
+    next.style.transform = dir > 0 ? 'translateX(40px)' : 'translateX(-40px)';
+    next.style.opacity = '0';
+
+    requestAnimationFrame(() => {
+      next.classList.add('active');
+      next.style.transform = '';
+      next.style.opacity = '';
+    });
+
+    setTimeout(() => {
+      prev.classList.remove('exit-left');
+      prev.style.transform = '';
+      prev.style.opacity = '';
+    }, 500);
+
+    current = index;
+    updateUI();
+  }
+
+  function go(delta) { goTo(current + delta); }
+
+  // Keyboard navigation
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(1); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+    if (e.key === 'Home') { e.preventDefault(); goTo(0); }
+    if (e.key === 'End') { e.preventDefault(); goTo(total - 1); }
+  });
+
+  // Touch/swipe support
+  let touchStartX = 0;
+  document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    const diff = touchStartX - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) { go(diff > 0 ? 1 : -1); }
+  });
+
+  updateUI();
+</script>
+</body>
+</html>
