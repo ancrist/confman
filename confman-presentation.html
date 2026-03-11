@@ -1431,8 +1431,180 @@
     </div>
   </div>
 
-  <!-- Slide 15: Performance Sprint -->
+  <!-- Slide 15: Locust Benchmark Suite -->
   <div class="slide" data-slide="14">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--amber); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Benchmark Tool 1</div>
+      <h2>Locust Benchmark Suite</h2>
+      <p style="margin-bottom:14px;">A full load-testing harness with <strong style="color:var(--text);">6 scenarios</strong>, <strong style="color:var(--text);">3 data tiers</strong>, and automatic leader discovery.</p>
+
+      <div style="display:flex; gap:24px; width:100%; max-width:1000px; flex-wrap:wrap;">
+
+        <!-- Left: scenarios -->
+        <div style="flex:1; min-width:340px;">
+          <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Test Scenarios</div>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px;">
+              <span style="font-family:var(--mono); font-size:10px; color:var(--amber); min-width:110px; font-weight:600;">write-1u</span>
+              <span style="font-size:11px; color:var(--text-dim); flex:1;">Single writer, 50-100ms think time</span>
+              <span style="font-family:var(--mono); font-size:10px; color:var(--text-muted);">baseline</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px;">
+              <span style="font-family:var(--mono); font-size:10px; color:var(--amber); min-width:110px; font-weight:600;">write-10u</span>
+              <span style="font-size:11px; color:var(--text-dim); flex:1;">10 concurrent writers, natural spacing</span>
+              <span style="font-family:var(--mono); font-size:10px; color:var(--text-muted);">throughput</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; border-left:3px solid var(--amber);">
+              <span style="font-family:var(--mono); font-size:10px; color:var(--amber); min-width:110px; font-weight:600;">write-stress</span>
+              <span style="font-size:11px; color:var(--text-dim); flex:1;">10 users, <code style="font-size:10px;">wait_time=0</code> &mdash; peak throughput</span>
+              <span style="font-family:var(--mono); font-size:10px; color:var(--green);">3.6x</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px;">
+              <span style="font-family:var(--mono); font-size:10px; color:var(--cyan); min-width:110px; font-weight:600;">read-1u</span>
+              <span style="font-size:11px; color:var(--text-dim); flex:1;">Single reader, no think time</span>
+              <span style="font-family:var(--mono); font-size:10px; color:var(--text-muted);">~1,055/s</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px;">
+              <span style="font-family:var(--mono); font-size:10px; color:var(--cyan); min-width:110px; font-weight:600;">read-10u</span>
+              <span style="font-size:11px; color:var(--text-dim); flex:1;">10 concurrent readers</span>
+              <span style="font-family:var(--mono); font-size:10px; color:var(--text-muted);">~2,190/s</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px;">
+              <span style="font-family:var(--mono); font-size:10px; color:var(--green); min-width:110px; font-weight:600;">mixed-10u</span>
+              <span style="font-size:11px; color:var(--text-dim); flex:1;">80% reads / 20% writes, 30s duration</span>
+              <span style="font-family:var(--mono); font-size:10px; color:var(--text-muted);">realistic</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: data tiers + architecture -->
+        <div style="flex:0 0 300px; display:flex; flex-direction:column; gap:10px;">
+
+          <!-- Data tiers -->
+          <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">Data Tiers</div>
+          <div style="display:flex; gap:6px;">
+            <div style="flex:1; padding:10px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; text-align:center;">
+              <div style="font-family:var(--mono); font-size:16px; font-weight:700; color:var(--green);">100</div>
+              <div style="font-size:9px; color:var(--text-muted);">small<br>5 ns &times; 20 keys</div>
+            </div>
+            <div style="flex:1; padding:10px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; text-align:center;">
+              <div style="font-family:var(--mono); font-size:16px; font-weight:700; color:var(--amber);">500</div>
+              <div style="font-size:9px; color:var(--text-muted);">large<br>10 ns &times; 50 keys</div>
+            </div>
+            <div style="flex:1; padding:10px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; text-align:center;">
+              <div style="font-family:var(--mono); font-size:16px; font-weight:700; color:var(--red);">10K</div>
+              <div style="font-size:9px; color:var(--text-muted);">xlarge<br>20 ns &times; 500 keys</div>
+            </div>
+          </div>
+
+          <!-- Wrapper features -->
+          <div style="padding:12px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px;">
+            <div style="font-family:var(--mono); font-size:9px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">run_benchmark.py Wrapper</div>
+            <div style="font-size:11px; color:var(--text-dim); line-height:1.6;">
+              Auto leader discovery<br>
+              Data seeding with progress<br>
+              File-based key registry (JSON)<br>
+              CSV results + pandas formatting<br>
+              Optional cleanup (<code style="font-size:10px;">--no-cleanup</code>)
+            </div>
+          </div>
+
+          <!-- Key insight -->
+          <div style="padding:10px 14px; background:rgba(251,191,36,0.06); border:1px solid rgba(251,191,36,0.15); border-radius:8px; font-size:11px; color:var(--text-dim);">
+            <strong style="color:var(--amber);">Key insight:</strong> <code style="font-size:10px;">write_stress.py</code> uses <code style="font-size:10px;">wait_time=constant(0)</code> to flood requests into the 1ms batching window &mdash; this is how we measured the 3.6x throughput gain from write batching.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 16: Simple Benchmark Script -->
+  <div class="slide" data-slide="15">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--green); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Benchmark Tool 2</div>
+      <h2>Simple Benchmark Script</h2>
+      <p style="margin-bottom:14px;">A lightweight Python script for quick, targeted measurements &mdash; no dependencies beyond <code>requests</code>.</p>
+
+      <div style="display:flex; gap:24px; width:100%; max-width:1000px; flex-wrap:wrap;">
+
+        <!-- Left: usage examples as terminal -->
+        <div style="flex:1; min-width:360px;">
+          <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">scripts/benchmark_configs.py</div>
+
+          <div style="background:#0d1117; border:1px solid var(--border); border-radius:10px; padding:14px 16px; font-family:var(--mono); font-size:11px; line-height:1.8; overflow-x:auto;">
+            <div style="color:var(--text-muted); margin-bottom:6px;"># Write 100 configs at 10 req/s</div>
+            <div><span style="color:var(--green);">$</span> <span style="color:var(--text);">benchmark_configs.py write</span> <span style="color:var(--amber);">-c 100 -r 10</span></div>
+            <div style="height:8px;"></div>
+            <div style="color:var(--text-muted);"># Unlimited speed, 1KB payloads</div>
+            <div><span style="color:var(--green);">$</span> <span style="color:var(--text);">benchmark_configs.py write</span> <span style="color:var(--amber);">--unlimited -s 1KB</span></div>
+            <div style="height:8px;"></div>
+            <div style="color:var(--text-muted);"># 10 concurrent writers (stress test)</div>
+            <div><span style="color:var(--green);">$</span> <span style="color:var(--text);">benchmark_configs.py write</span> <span style="color:var(--amber);">--concurrency 10 -c 500</span></div>
+            <div style="height:8px;"></div>
+            <div style="color:var(--text-muted);"># Read from any node (round-robin)</div>
+            <div><span style="color:var(--green);">$</span> <span style="color:var(--text);">benchmark_configs.py read</span> <span style="color:var(--cyan);">--any-node --concurrency 10</span></div>
+            <div style="height:8px;"></div>
+            <div style="color:var(--text-muted);"># Reproducible read test with seed</div>
+            <div><span style="color:var(--green);">$</span> <span style="color:var(--text);">benchmark_configs.py read</span> <span style="color:var(--cyan);">-c 1000 --seed 42</span></div>
+          </div>
+
+          <!-- Output preview -->
+          <div style="background:#0d1117; border:1px solid var(--border); border-radius:0 0 10px 10px; border-top:none; padding:10px 16px; font-family:var(--mono); font-size:10px; line-height:1.6; color:var(--text-muted); margin-top:-1px;">
+            <div style="color:var(--text-dim);">Results - WRITE (UNLIMITED)</div>
+            <div>Total time:&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--text);">12.45s</span></div>
+            <div>Successes:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--green);">500</span></div>
+            <div>Achieved rate:&nbsp;<span style="color:var(--green);">40.2 req/s</span></div>
+            <div>Latency P50:&nbsp;&nbsp;&nbsp;<span style="color:var(--text);">18.3ms</span>&nbsp; P95: <span style="color:var(--amber);">45.1ms</span>&nbsp; P99: <span style="color:var(--red);">89.2ms</span></div>
+          </div>
+        </div>
+
+        <!-- Right: features + comparison -->
+        <div style="flex:0 0 280px; display:flex; flex-direction:column; gap:10px;">
+          <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">Features</div>
+
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <div style="padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; font-size:11px; display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--green);">&#10003;</span>
+              <span style="color:var(--text-dim);">Auto leader discovery</span>
+            </div>
+            <div style="padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; font-size:11px; display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--green);">&#10003;</span>
+              <span style="color:var(--text-dim);">Configurable payload sizes (B, KB)</span>
+            </div>
+            <div style="padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; font-size:11px; display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--green);">&#10003;</span>
+              <span style="color:var(--text-dim);">Concurrent reads &amp; writes</span>
+            </div>
+            <div style="padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; font-size:11px; display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--green);">&#10003;</span>
+              <span style="color:var(--text-dim);">Round-robin across all nodes</span>
+            </div>
+            <div style="padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; font-size:11px; display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--green);">&#10003;</span>
+              <span style="color:var(--text-dim);">Latency percentiles (p50/p95/p99)</span>
+            </div>
+            <div style="padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; font-size:11px; display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--green);">&#10003;</span>
+              <span style="color:var(--text-dim);">WAL entry size calculation</span>
+            </div>
+            <div style="padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; font-size:11px; display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--green);">&#10003;</span>
+              <span style="color:var(--text-dim);">Reproducible runs (<code style="font-size:10px;">--seed</code>)</span>
+            </div>
+          </div>
+
+          <!-- When to use which -->
+          <div style="padding:10px 14px; background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.15); border-radius:8px; font-size:11px; color:var(--text-dim);">
+            <strong style="color:var(--green);">When to use:</strong> Quick iteration &mdash; test a hypothesis in seconds without spinning up Locust infrastructure. Also calculates WAL entry overhead (JSON envelope size) to understand true disk cost.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 17: Performance Sprint -->
+  <div class="slide" data-slide="16">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--cyan); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 5&ndash;10</div>
       <h2>The Performance Sprint</h2>
@@ -1474,8 +1646,8 @@
     </div>
   </div>
 
-  <!-- Slide 16: Memory Crisis -->
-  <div class="slide" data-slide="15">
+  <!-- Slide 17: Memory Crisis -->
+  <div class="slide" data-slide="17">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--red); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 8&ndash;11</div>
       <h2>The Memory Crisis</h2>
@@ -1520,8 +1692,106 @@
     </div>
   </div>
 
-  <!-- Slide 17: Blob Store -->
-  <div class="slide" data-slide="16">
+  <!-- Slide 18: Blob Store Architecture & Flow -->
+  <div class="slide" data-slide="18">
+    <div class="slide-inner stagger">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--green); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Architecture Deep Dive</div>
+      <h2>Blob Store: Architecture &amp; Flow</h2>
+      <!-- Pseudocode decision diagram -->
+      <div style="width:100%; max-width:720px; margin-bottom:18px; background:rgba(0,0,0,0.35); border:1px solid var(--border); border-radius:8px; padding:14px 20px; font-family:var(--mono); font-size:12px; line-height:1.7; position:relative;">
+        <div style="position:absolute; top:8px; right:12px; font-size:9px; color:var(--text-muted); letter-spacing:1px; text-transform:uppercase;">ConfigWriteService.WriteAsync()</div>
+        <span style="color:var(--purple);">var</span> <span style="color:var(--text);">size</span> = <span style="color:var(--cyan);">Encoding.UTF8</span>.GetByteCount(value);<br/>
+        <br/>
+        <span style="color:var(--purple);">if</span> (size <span style="color:var(--amber);">&lt;</span> <span style="color:var(--green);">65,536</span>) <span style="color:var(--text-muted);">// &lt; 64 KB</span><br/>
+        <span style="color:var(--text-muted);">&nbsp;&nbsp;├─</span> <span style="color:var(--cyan);">SetConfigCommand</span> { Value = <span style="color:var(--green);">"full payload"</span> }<br/>
+        <span style="color:var(--text-muted);">&nbsp;&nbsp;└─</span> Raft.ReplicateAsync(command) <span style="color:var(--text-muted);">// value in WAL</span><br/>
+        <br/>
+        <span style="color:var(--purple);">else</span> <span style="color:var(--text-muted);">// &ge; 64 KB &mdash; blob path</span><br/>
+        <span style="color:var(--text-muted);">&nbsp;&nbsp;├─</span> blobId = <span style="color:var(--cyan);">BlobStore</span>.PutFromStream(value) <span style="color:var(--text-muted);">// SHA-256 + LZ4</span><br/>
+        <span style="color:var(--text-muted);">&nbsp;&nbsp;├─</span> <span style="color:var(--amber);">BlobReplicator</span>.Replicate(blobId) &nbsp;<span style="color:var(--text-muted);">// quorum ACK first</span><br/>
+        <span style="color:var(--text-muted);">&nbsp;&nbsp;├─</span> <span style="color:var(--cyan);">SetConfigBlobRefCommand</span> { BlobId = <span style="color:var(--green);">"a3f2…"</span> }<br/>
+        <span style="color:var(--text-muted);">&nbsp;&nbsp;└─</span> Raft.ReplicateAsync(command) <span style="color:var(--text-muted);">// ~200 B pointer in WAL</span>
+      </div>
+
+      <!-- Write flow diagram -->
+      <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:16px; width:100%; max-width:860px; align-items:start;">
+
+        <!-- Left: Write Path -->
+        <div style="display:flex; flex-direction:column; gap:0;">
+          <div style="font-family:var(--mono); font-size:11px; color:var(--amber); letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; text-align:center;">Write Path (&#8805; 64 KB)</div>
+
+          <div class="card" style="padding:10px 14px; text-align:center; border-left:3px solid var(--cyan);">
+            <div style="font-size:13px; font-weight:600; color:var(--cyan);">1. Hash &amp; Compress</div>
+            <div style="font-size:11px; color:var(--text-dim); margin-top:4px; font-family:var(--mono);">SHA-256 &rarr; BlobId (64 hex)<br/>LZ4 stream &rarr; disk</div>
+          </div>
+          <div class="layer-arrow">&darr;</div>
+          <div class="card" style="padding:10px 14px; text-align:center; border-left:3px solid var(--amber);">
+            <div style="font-size:13px; font-weight:600; color:var(--amber);">2. Quorum Replicate</div>
+            <div style="font-size:11px; color:var(--text-dim); margin-top:4px; font-family:var(--mono);">PUT /internal/blobs/{id}<br/>majority ACK &bull; 10s timeout</div>
+          </div>
+          <div class="layer-arrow">&darr;</div>
+          <div class="card" style="padding:10px 14px; text-align:center; border-left:3px solid var(--green);">
+            <div style="font-size:13px; font-weight:600; color:var(--green);">3. Raft Commit Pointer</div>
+            <div style="font-size:11px; color:var(--text-dim); margin-top:4px; font-family:var(--mono);">SetConfigBlobRefCommand<br/>~200 bytes (not 1 MB)</div>
+          </div>
+        </div>
+
+        <!-- Center: Divider -->
+        <div style="width:1px; background:var(--border); min-height:100%; margin:0 4px;"></div>
+
+        <!-- Right: Read Path + Node Topology -->
+        <div style="display:flex; flex-direction:column; gap:0;">
+          <div style="font-family:var(--mono); font-size:11px; color:var(--purple); letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; text-align:center;">Read Path</div>
+
+          <div class="card" style="padding:10px 14px; text-align:center; border-left:3px solid var(--purple);">
+            <div style="font-size:13px; font-weight:600; color:var(--purple);">BlobValueResolver</div>
+            <div style="font-size:11px; color:var(--text-dim); margin-top:4px; font-family:var(--mono);">entry.IsBlobBacked?</div>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:6px;">
+            <div class="card" style="flex:1; padding:8px 10px; text-align:center; border-top:2px solid var(--green);">
+              <div style="font-size:11px; font-weight:600; color:var(--green);">Fast</div>
+              <div style="font-size:10px; color:var(--text-dim); font-family:var(--mono); margin-top:2px;">Local disk<br/>LZ4 decompress</div>
+            </div>
+            <div class="card" style="flex:1; padding:8px 10px; text-align:center; border-top:2px solid var(--red);">
+              <div style="font-size:11px; font-weight:600; color:var(--red);">Slow</div>
+              <div style="font-size:10px; color:var(--text-dim); font-family:var(--mono); margin-top:2px;">Fetch from peer<br/>+ cache locally</div>
+            </div>
+          </div>
+
+          <div style="font-family:var(--mono); font-size:11px; color:var(--cyan); letter-spacing:1px; text-transform:uppercase; margin:14px 0 8px; text-align:center;">3-Node Replication</div>
+          <div style="display:flex; gap:8px; justify-content:center;">
+            <div class="card" style="padding:8px 14px; text-align:center; border-top:2px solid var(--green); flex:1;">
+              <div style="font-size:18px; margin-bottom:2px;">&#9679;</div>
+              <div style="font-size:11px; font-weight:600; color:var(--green);">Leader</div>
+              <div style="font-size:10px; color:var(--text-dim); font-family:var(--mono);">store + hash</div>
+            </div>
+            <div class="card" style="padding:8px 14px; text-align:center; border-top:2px solid var(--amber); flex:1;">
+              <div style="font-size:18px; margin-bottom:2px;">&#9679;</div>
+              <div style="font-size:11px; font-weight:600; color:var(--amber);">Follower 1</div>
+              <div style="font-size:10px; color:var(--text-dim); font-family:var(--mono);">ACK &#10003; quorum</div>
+            </div>
+            <div class="card" style="padding:8px 14px; text-align:center; border-top:2px solid var(--text-muted); flex:1;">
+              <div style="font-size:18px; margin-bottom:2px; opacity:0.4;">&#9679;</div>
+              <div style="font-size:11px; font-weight:600; color:var(--text-muted);">Follower 2</div>
+              <div style="font-size:10px; color:var(--text-dim); font-family:var(--mono);">background push</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Key properties footer -->
+      <div style="display:flex; gap:12px; margin-top:18px; flex-wrap:wrap; justify-content:center; max-width:860px;">
+        <div style="font-size:11px; padding:5px 12px; border-radius:20px; border:1px solid var(--cyan); color:var(--cyan); font-family:var(--mono);">SHA-256 content-addressed</div>
+        <div style="font-size:11px; padding:5px 12px; border-radius:20px; border:1px solid var(--green); color:var(--green); font-family:var(--mono);">LZ4 compressed on disk</div>
+        <div style="font-size:11px; padding:5px 12px; border-radius:20px; border:1px solid var(--amber); color:var(--amber); font-family:var(--mono);">Idempotent &bull; atomic rename</div>
+        <div style="font-size:11px; padding:5px 12px; border-radius:20px; border:1px solid var(--purple); color:var(--purple); font-family:var(--mono);">Dedup gate per BlobId</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 19: Blob Store Overview -->
+  <div class="slide" data-slide="19">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--green); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">February 12&ndash;13</div>
       <h2>The Architectural Leap</h2>
@@ -1556,8 +1826,8 @@
     </div>
   </div>
 
-  <!-- Slide 18: Timeline -->
-  <div class="slide" data-slide="17">
+  <!-- Slide 20: Timeline -->
+  <div class="slide" data-slide="20">
     <div class="slide-inner stagger">
       <h2 style="text-align:center; margin-bottom:24px;">Project Timeline</h2>
       <div class="timeline" id="timeline">
@@ -1613,8 +1883,8 @@
     </div>
   </div>
 
-  <!-- Slide 19: Commit & PR History -->
-  <div class="slide" data-slide="18">
+  <!-- Slide 21: Commit & PR History -->
+  <div class="slide" data-slide="21">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--purple); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Project History</div>
       <h2>Commits &amp; Pull Requests</h2>
@@ -1797,8 +2067,8 @@
     </div>
   </div>
 
-  <!-- Slide 20: Key Takeaways -->
-  <div class="slide" data-slide="19">
+  <!-- Slide 22: Key Takeaways -->
+  <div class="slide" data-slide="22">
     <div class="slide-inner stagger">
       <h2 style="text-align:center; margin-bottom:24px;">Key Takeaways</h2>
       <ol class="takeaways">
@@ -1818,8 +2088,8 @@
     </div>
   </div>
 
-  <!-- Slide 21: Fractal Agent Usage -->
-  <div class="slide" data-slide="20">
+  <!-- Slide 23: Fractal Agent Usage -->
+  <div class="slide" data-slide="23">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--cyan); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Meta-Lesson</div>
       <h2>Use the Agent <span style="color:var(--cyan);">Fractally</span></h2>
@@ -1944,8 +2214,8 @@
     </div>
   </div>
 
-  <!-- Slide 22: Claude Code Insights -->
-  <div class="slide" data-slide="21">
+  <!-- Slide 24: Claude Code Insights -->
+  <div class="slide" data-slide="24">
     <div class="slide-inner stagger">
       <div style="font-family:var(--mono); font-size:12px; color:var(--purple); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Meta-Lesson</div>
       <h2>Building <em style="color:var(--cyan);">with</em> AI Agents</h2>
