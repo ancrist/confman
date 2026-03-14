@@ -11,15 +11,14 @@ public static class AuditIdGenerator
 {
     /// <summary>
     /// Generates a deterministic ObjectId from audit event properties.
-    /// Uses timestamp, namespace, and key to create a unique, reproducible ID.
-    /// Action is NOT included because it may change on replay (created vs updated).
+    /// Uses timestamp, namespace, key, and action to create a unique, reproducible ID.
+    /// Action IS included to prevent collisions when multiple actions (e.g., create
+    /// then delete) occur on the same key at the same timestamp. The create-vs-update
+    /// ambiguity on replay is acceptable — upsert ensures idempotency regardless.
     /// </summary>
     public static ObjectId Generate(DateTimeOffset timestamp, string ns, string? key, AuditAction action)
     {
-        // Create a deterministic hash from the composite key
-        // Note: action is NOT included - on log replay, the action might differ
-        // (e.g., "created" becomes "updated" if entry already exists)
-        var compositeKey = $"{timestamp:O}:{ns}:{key ?? ""}";
+        var compositeKey = $"{timestamp:O}:{ns}:{key ?? ""}:{action}";
         var hashBytes = System.Security.Cryptography.MD5.HashData(
             System.Text.Encoding.UTF8.GetBytes(compositeKey));
 

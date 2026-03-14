@@ -300,6 +300,7 @@ public sealed class LiteDbConfigStore : IConfigStore, IDisposable
             return _audit
                 .Find(x => x.Namespace == ns)
                 .OrderByDescending(x => x.Timestamp)
+                .ThenByDescending(x => x.Id)
                 .Take(limit)
                 .ToList();
         }
