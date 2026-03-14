@@ -93,18 +93,18 @@ public class CommandTests : IDisposable
 
         var audit = await _store.GetAuditEventsAsync("test-ns");
         Assert.Equal(2, audit.Count);
-        Assert.Equal(AuditAction.ConfigUpdated, audit[0].Action);
-        Assert.Equal("value-v1", audit[0].OldValue);
-        Assert.Equal("value-v2", audit[0].NewValue);
+        var updateEvent = audit.First(a => a.Action == AuditAction.ConfigUpdated);
+        Assert.Equal("value-v1", updateEvent.OldValue);
+        Assert.Equal("value-v2", updateEvent.NewValue);
     }
 
     [Fact]
     public async Task SetConfigCommand_IdempotentAudit_NoDuplicates()
     {
         // When the same command is applied multiple times (log replay scenario),
-        // only one audit event should exist due to idempotent upsert.
-        // Note: On replay, action may change from "created" to "updated" since
-        // the entry already exists, but the ID is based on timestamp+ns+key only.
+        // two audit events exist: one "created" (first apply) and one "updated"
+        // (subsequent applies). Each action gets its own deterministic ID, so
+        // upsert deduplicates within the same action but not across actions.
         var timestamp = DateTimeOffset.UtcNow;
         var command = new SetConfigCommand
         {
@@ -125,12 +125,13 @@ public class CommandTests : IDisposable
         Assert.NotNull(entry);
         Assert.Equal("test-value", entry.Value);
 
-        // Only ONE audit event should exist (upsert deduplicates by ID)
-        // The action will be "config.updated" since replays see existing entry
+        // Two audit events: "created" from first apply, "updated" from replays.
+        // Upsert deduplicates within same action (3 applies → 1 updated, not 3).
         var audit = await _store.GetAuditEventsAsync("idempotent-test");
-        Assert.Single(audit);
-        // Action is "updated" because subsequent applies see the entry exists
-        Assert.Equal(AuditAction.ConfigUpdated, audit[0].Action);
+        Assert.Equal(2, audit.Count);
+        var actions = audit.Select(a => a.Action).ToHashSet();
+        Assert.Contains(AuditAction.ConfigCreated, actions);
+        Assert.Contains(AuditAction.ConfigUpdated, actions);
     }
 
     #endregion
@@ -163,9 +164,9 @@ public class CommandTests : IDisposable
 
         var audit = await _store.GetAuditEventsAsync("test-ns");
         Assert.Equal(2, audit.Count);
-        Assert.Equal(AuditAction.ConfigDeleted, audit[0].Action);
-        Assert.Equal("test-value", audit[0].OldValue);
-        Assert.Null(audit[0].NewValue);
+        var deleteEvent = audit.First(a => a.Action == AuditAction.ConfigDeleted);
+        Assert.Equal("test-value", deleteEvent.OldValue);
+        Assert.Null(deleteEvent.NewValue);
     }
 
     [Fact]
@@ -237,9 +238,9 @@ public class CommandTests : IDisposable
 
         var audit = await _store.GetAuditEventsAsync("my-namespace");
         Assert.Equal(2, audit.Count);
-        Assert.Equal(AuditAction.NamespaceUpdated, audit[0].Action);
-        Assert.Equal("Original", audit[0].OldValue);
-        Assert.Equal("Updated", audit[0].NewValue);
+        var updateEvent = audit.First(a => a.Action == AuditAction.NamespaceUpdated);
+        Assert.Equal("Original", updateEvent.OldValue);
+        Assert.Equal("Updated", updateEvent.NewValue);
     }
 
     #endregion
@@ -270,7 +271,7 @@ public class CommandTests : IDisposable
 
         var audit = await _store.GetAuditEventsAsync("my-namespace");
         Assert.Equal(2, audit.Count);
-        Assert.Equal(AuditAction.NamespaceDeleted, audit[0].Action);
+        Assert.Contains(audit, a => a.Action == AuditAction.NamespaceDeleted);
     }
 
     #endregion

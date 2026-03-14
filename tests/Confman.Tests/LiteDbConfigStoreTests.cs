@@ -396,16 +396,17 @@ public class LiteDbConfigStoreTests : IDisposable
     }
 
     [Fact]
-    public void AuditIdGenerator_IgnoresActionForIdempotency()
+    public void AuditIdGenerator_IncludesActionInId()
     {
-        // Action is NOT included in the ID - this ensures replays are idempotent
-        // even when action changes from "created" to "updated"
+        // Action IS included in the ID so distinct actions (create, update, delete)
+        // on the same key at the same timestamp produce separate audit events.
+        // Idempotency is preserved: replaying the same action yields the same ID.
         var timestamp = DateTimeOffset.Parse("2026-01-26T10:00:00Z");
 
         var id1 = AuditIdGenerator.Generate(timestamp, "ns", "key", AuditAction.ConfigCreated);
         var id2 = AuditIdGenerator.Generate(timestamp, "ns", "key", AuditAction.ConfigUpdated);
 
-        Assert.Equal(id1, id2); // Same ID despite different action
+        Assert.NotEqual(id1, id2); // Different action = different ID
     }
 
     [Fact]
